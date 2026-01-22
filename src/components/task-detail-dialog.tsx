@@ -20,7 +20,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarIcon, X, Link, Tag, Maximize2, Plus, Check, Trash2, ListChecks } from 'lucide-react';
+import { CalendarIcon, X, Link, Tag, Maximize2, Plus, Check, Trash2, ListChecks, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -43,6 +43,7 @@ export function TaskDetailDialog({
     isNewTask = false,
 }: TaskDetailDialogProps) {
     const [title, setTitle] = useState('');
+    const [isFavorite, setIsFavorite] = useState(false);
     const [assignee, setAssignee] = useState('');
     const [resourceUrl, setResourceUrl] = useState('');
     const [notes, setNotes] = useState('');
@@ -68,6 +69,7 @@ export function TaskDetailDialog({
     useEffect(() => {
         if (task) {
             setTitle(task.title);
+            setIsFavorite(task.isFavorite || false);
             setAssignee(task.assignee || '');
             setResourceUrl(task.resourceUrl || '');
             setNotes(task.notes);
@@ -93,6 +95,7 @@ export function TaskDetailDialog({
                     dueTime: dueTime || null,
                     tags,
                     subtasks,
+                    isFavorite,
                 });
             } else {
                 // Update existing task
@@ -105,6 +108,7 @@ export function TaskDetailDialog({
                     dueTime: dueTime || null,
                     tags,
                     subtasks,
+                    isFavorite,
                 });
             }
 
@@ -302,7 +306,17 @@ export function TaskDetailDialog({
                     onKeyDown={handleKeyDown}
                 >
                     <DialogHeader>
-                        <DialogTitle>할 일 상세</DialogTitle>
+                        <div className="flex items-center justify-between">
+                            <DialogTitle>할 일 상세</DialogTitle>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setIsFavorite(!isFavorite)}
+                                className={`text-gray-400 hover:text-yellow-500 ${isFavorite ? 'text-yellow-500' : ''}`}
+                            >
+                                <Star className={`w-5 h-5 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+                            </Button>
+                        </div>
                     </DialogHeader>
 
                     <div className="space-y-4">
@@ -612,7 +626,7 @@ export function TaskDetailDialog({
                             </div>
                             {/* Rich Text Editor for Notes */}
                             {/* Rich Text Editor for Notes */}
-                            <div className="mt-1 w-full min-h-[100px] max-h-[150px] overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md p-2 bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
+                            <div className="relative mt-1 w-full min-h-[100px] max-h-[150px] overflow-y-auto border border-gray-300 dark:border-gray-600 rounded-md p-2 bg-white dark:bg-gray-800 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-transparent">
                                 <style jsx global>{`
                                     .rich-text-editor table { border-collapse: collapse; width: 100%; margin: 0.5em 0; }
                                     .rich-text-editor td, .rich-text-editor th { border: 1px solid #d1d5db; padding: 4px 8px; vertical-align: top; text-align: left; }

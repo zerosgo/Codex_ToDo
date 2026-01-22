@@ -19,7 +19,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { MoreVertical, Trash2, Calendar, FileText, GripVertical } from 'lucide-react';
+import { MoreVertical, Trash2, Calendar, FileText, GripVertical, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -55,6 +55,12 @@ export function TaskItem({
         deleteTask(task.id);
         onTaskChange();
         setShowDeleteDialog(false);
+    };
+
+    const handleToggleFavorite = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        updateTask(task.id, { isFavorite: !task.isFavorite });
+        onTaskChange();
     };
 
     const handleTitleSave = () => {
@@ -141,6 +147,15 @@ export function TaskItem({
                 {/* Actions */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-8 w-8 p-0 opacity-0 group-hover:opacity-100 ${task.isFavorite ? 'opacity-100 text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`}
+                            onClick={handleToggleFavorite}
+                            title={task.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                        >
+                            <Star className={`h-4 w-4 ${task.isFavorite ? 'fill-yellow-500' : ''}`} />
+                        </Button>
                         <Button
                             variant="ghost"
                             size="sm"

@@ -23,7 +23,7 @@ import {
 } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { Task, Category } from '@/lib/types';
-import { ChevronLeft, ChevronRight, GripVertical, Trash2, Paperclip, Plus, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Trash2, Paperclip, Plus, Search, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TeamScheduleAddModal } from './team-schedule-add-modal';
 import { TeamScheduleSearchModal } from './team-schedule-search-modal';
@@ -69,6 +69,7 @@ export function CalendarView({
     const [teamScheduleModalDate, setTeamScheduleModalDate] = useState<Date | undefined>(undefined);
     const [editingScheduleTask, setEditingScheduleTask] = useState<Task | null>(null);
     const [showOnlyTeamSchedule, setShowOnlyTeamSchedule] = useState(false);
+    const [showOnlyExecutive, setShowOnlyExecutive] = useState(false);
     const [showCopyToast, setShowCopyToast] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
 
@@ -342,6 +343,16 @@ export function CalendarView({
                     >
                         {showOnlyTeamSchedule ? '이전 보기' : '팀 일정'}
                     </button>
+                    <button
+                        onClick={() => setShowOnlyExecutive(!showOnlyExecutive)}
+                        className={`px-3 py-1 text-sm font-medium rounded transition-colors ${showOnlyExecutive
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 ring-2 ring-orange-500 ring-opacity-50'
+                            : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                            }`}
+                        title="대표/사업부/센터 일정만 표시"
+                    >
+                        {showOnlyExecutive ? '전체 보기' : '임원 일정'}
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -515,13 +526,15 @@ export function CalendarView({
                                 const scheduleCategory = categories.find(c => c.name === '팀 일정');
 
                                 // Show all tasks if week is not collapsed
+                                // Apply executive filter if enabled
                                 const scheduleTasks = !isCollapsed
                                     ? dayTasks
                                         .filter(t => t.categoryId === scheduleCategory?.id)
+                                        .filter(t => showOnlyExecutive ? (t.highlightLevel && t.highlightLevel > 0) : true)
                                         .sort((a, b) => (a.dueTime || '99:99').localeCompare(b.dueTime || '99:99'))
                                     : [];
 
-                                const regularTasks = (showOnlyTeamSchedule || isCollapsed)
+                                const regularTasks = (showOnlyTeamSchedule || showOnlyExecutive || isCollapsed)
                                     ? []
                                     : dayTasks.filter(t => t.categoryId !== scheduleCategory?.id);
 
@@ -605,6 +618,7 @@ export function CalendarView({
                                                                 )}
                                                                 {highlightLevel === 1 && <div className="w-2 h-2 rounded-full bg-red-500" />}
                                                                 {highlightLevel === 2 && <div className="w-2 h-2 rounded-full bg-green-500" />}
+                                                                {highlightLevel === 3 && <div className="w-2 h-2 rounded-full bg-purple-500" />}
                                                             </div>
                                                         </div>
                                                     </div>

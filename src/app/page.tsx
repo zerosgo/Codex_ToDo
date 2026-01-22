@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/sidebar';
 import { TaskList } from '@/components/task-list';
 import { CalendarView } from '@/components/calendar-view';
 import { KeepView } from '@/components/keep-view';
+import { FavoritesView } from '@/components/favorites-view';
 import { TaskDetailDialog } from '@/components/task-detail-dialog';
 import { ImportExportDialog } from '@/components/import-export-dialog';
 import { ScheduleImportDialog } from '@/components/schedule-import-dialog';
@@ -31,7 +32,7 @@ export default function Home() {
   const [theme, setThemeState] = useState<Theme>('light');
   const [layout, setLayoutState] = useState<Layout>(1);
   const [showWeekends, setShowWeekends] = useState(true);
-  const [viewMode, setViewMode] = useState<'calendar' | 'keep'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites'>('calendar');
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [notesVersion, setNotesVersion] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -472,6 +473,7 @@ export default function Home() {
                     setCurrentMonth(date);
                   }}
                   onImportSchedule={() => setIsScheduleImportOpen(true)}
+
                   onPinnedMemoClick={(noteId) => {
                     setViewMode('keep');
                     if (noteId) {
@@ -479,7 +481,10 @@ export default function Home() {
                     }
                   }}
                   notesVersion={notesVersion}
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
                 />
+
               </motion.div>
             )}
           </AnimatePresence>
@@ -542,11 +547,21 @@ export default function Home() {
                 onTaskDelete={handleTasksChange}
                 onDataChange={handleTasksChange}
               />
-            ) : (
+            ) : viewMode === 'keep' ? (
               <KeepView
                 selectedNoteId={selectedNoteId}
                 onNoteSelected={() => setSelectedNoteId(null)}
                 onNotesChange={() => setNotesVersion(v => v + 1)}
+              />
+            ) : (
+              <FavoritesView
+                categories={categories}
+                onTaskClick={(task) => setDetailTask(task)}
+                onNoteClick={(noteId) => {
+                  setViewMode('keep');
+                  setSelectedNoteId(noteId);
+                }}
+                onDataChange={handleTasksChange}
               />
             )}
           </div>

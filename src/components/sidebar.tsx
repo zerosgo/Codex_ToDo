@@ -36,6 +36,7 @@ import {
     FolderOpen,
     GripVertical,
     Pin,
+    Star,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -54,6 +55,8 @@ interface SidebarProps {
     onDateSelect: (date: Date) => void;
     onPinnedMemoClick?: (noteId: string) => void;
     notesVersion?: number;
+    viewMode: 'calendar' | 'keep' | 'favorites';
+    onViewModeChange: (mode: 'calendar' | 'keep' | 'favorites') => void;
 }
 
 export function Sidebar({
@@ -71,6 +74,8 @@ export function Sidebar({
     onDateSelect,
     onPinnedMemoClick,
     notesVersion,
+    viewMode,
+    onViewModeChange,
 }: SidebarProps) {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -132,6 +137,7 @@ export function Sidebar({
     const [editingQuickLink, setEditingQuickLink] = useState<QuickLink | null>(null);
     const [quickLinkName, setQuickLinkName] = useState('');
     const [quickLinkUrl, setQuickLinkUrl] = useState('');
+    const [quickLinkFavorite, setQuickLinkFavorite] = useState(false);
     const [quickLinkToDelete, setQuickLinkToDelete] = useState<QuickLink | null>(null);
 
     // Load quick links on mount and sort
@@ -166,15 +172,20 @@ export function Sidebar({
     const handleSaveQuickLink = () => {
         if (quickLinkName.trim() && quickLinkUrl.trim()) {
             if (editingQuickLink) {
-                updateQuickLink(editingQuickLink.id, { name: quickLinkName.trim(), url: quickLinkUrl.trim() });
+                updateQuickLink(editingQuickLink.id, {
+                    name: quickLinkName.trim(),
+                    url: quickLinkUrl.trim(),
+                    isFavorite: quickLinkFavorite
+                });
             } else {
-                addQuickLink(quickLinkName.trim(), quickLinkUrl.trim());
+                addQuickLink(quickLinkName.trim(), quickLinkUrl.trim(), { isFavorite: quickLinkFavorite });
             }
             loadQuickLinks();
             setIsQuickLinkDialogOpen(false);
             setEditingQuickLink(null);
             setQuickLinkName('');
             setQuickLinkUrl('');
+            setQuickLinkFavorite(false);
         }
     };
 
@@ -194,6 +205,7 @@ export function Sidebar({
         setEditingQuickLink(link);
         setQuickLinkName(link.name);
         setQuickLinkUrl(link.url);
+        setQuickLinkFavorite(link.isFavorite || false);
         setIsQuickLinkDialogOpen(true);
     };
 
@@ -231,6 +243,11 @@ export function Sidebar({
 
     const handleToggleQuickLinkPin = (link: QuickLink) => {
         updateQuickLink(link.id, { isPinned: !link.isPinned });
+        loadQuickLinks();
+    };
+
+    const handleToggleQuickLinkFavorite = (link: QuickLink) => {
+        updateQuickLink(link.id, { isFavorite: !link.isFavorite });
         loadQuickLinks();
     };
 
@@ -288,6 +305,39 @@ export function Sidebar({
 
     return (
         <div className="w-72 h-screen bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden transition-colors duration-300">
+            {/* View Mode Tabs */}
+            <div className="p-2 grid grid-cols-3 gap-1 border-b border-gray-100 dark:border-gray-800 shrink-0">
+                <button
+                    onClick={() => onViewModeChange('calendar')}
+                    className={`flex items-center justify-center py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'calendar'
+                        ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                        : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+                        }`}
+                >
+                    <CheckSquare className="w-4 h-4 mr-1.5" />
+                    할 일
+                </button>
+                <button
+                    onClick={() => onViewModeChange('keep')}
+                    className={`flex items-center justify-center py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'keep'
+                        ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400'
+                        : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+                        }`}
+                >
+                    <FileText className="w-4 h-4 mr-1.5" />
+                    메모
+                </button>
+                <button
+                    onClick={() => onViewModeChange('favorites')}
+                    className={`flex items-center justify-center py-2 rounded-md text-sm font-medium transition-colors ${viewMode === 'favorites'
+                        ? 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400'
+                        : 'text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
+                        }`}
+                >
+                    <Star className="w-4 h-4 mr-1.5" />
+                    즐겨찾기
+                </button>
+            </div>
             {/* Header */}
             <div className="p-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-2">
@@ -295,33 +345,37 @@ export function Sidebar({
                     <span className="text-lg font-semibold">Local Tasks</span>
                 </div>
 
-                {/* Collapsible Mini Calendar */}
-                <button
-                    onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
-                    className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2 w-full"
-                >
-                    {isCalendarExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                    <span>📅 미니 캘린더</span>
-                </button>
-                <AnimatePresence>
-                    {isCalendarExpanded && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2 }}
-                            className="overflow-hidden"
+                {/* Collapsible Mini Calendar - Only in Calendar Mode */}
+                {viewMode === 'calendar' && (
+                    <>
+                        <button
+                            onClick={() => setIsCalendarExpanded(!isCalendarExpanded)}
+                            className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2 w-full"
                         >
-                            <MiniCalendar
-                                currentMonth={currentMonth}
-                                selectedDate={selectedDate}
-                                tasks={tasks}
-                                onMonthChange={onMonthChange}
-                                onDateSelect={onDateSelect}
-                            />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                            {isCalendarExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                            <span>📅 미니 캘린더</span>
+                        </button>
+                        <AnimatePresence>
+                            {isCalendarExpanded && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="overflow-hidden"
+                                >
+                                    <MiniCalendar
+                                        currentMonth={currentMonth}
+                                        selectedDate={selectedDate}
+                                        tasks={tasks}
+                                        onMonthChange={onMonthChange}
+                                        onDateSelect={onDateSelect}
+                                    />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </>
+                )}
             </div>
 
             {/* Categories List */}
@@ -455,6 +509,7 @@ export function Sidebar({
                                             >
                                                 <Pin className={`h-3.5 w-3.5 ${link.isPinned ? 'fill-current' : ''}`} />
                                             </Button>
+
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
@@ -475,6 +530,7 @@ export function Sidebar({
                                         setEditingQuickLink(null);
                                         setQuickLinkName('');
                                         setQuickLinkUrl('');
+                                        setQuickLinkFavorite(false);
                                         setIsQuickLinkDialogOpen(true);
                                     }}
                                 >
@@ -700,9 +756,19 @@ export function Sidebar({
             < Dialog open={isQuickLinkDialogOpen} onOpenChange={setIsQuickLinkDialogOpen} >
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>
-                            {editingQuickLink ? '파일 수정' : '자주 쓰는 파일 추가'}
-                        </DialogTitle>
+                        <div className="flex items-center justify-between">
+                            <DialogTitle>
+                                {editingQuickLink ? '파일 수정' : '자주 쓰는 파일 추가'}
+                            </DialogTitle>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setQuickLinkFavorite(!quickLinkFavorite)}
+                                className={`text-gray-400 hover:text-yellow-500 ${quickLinkFavorite ? 'text-yellow-500' : ''}`}
+                            >
+                                <Star className={`w-5 h-5 ${quickLinkFavorite ? 'fill-yellow-500' : ''}`} />
+                            </Button>
+                        </div>
                     </DialogHeader>
                     <div className="space-y-3">
                         <div>

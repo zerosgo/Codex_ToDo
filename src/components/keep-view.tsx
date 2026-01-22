@@ -18,7 +18,7 @@ import {
     DialogTitle,
     DialogFooter,
 } from '@/components/ui/dialog';
-import { Plus, Pin, Trash2, Palette, X, Archive, Search, Tag, Settings, Edit2 } from 'lucide-react';
+import { Plus, Pin, Trash2, Palette, X, Archive, Search, Tag, Settings, Edit2, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface KeepViewProps {
@@ -191,6 +191,12 @@ export function KeepView({ selectedNoteId, onNoteSelected, onNotesChange }: Keep
 
     const handleTogglePin = (note: Note) => {
         updateNote(note.id, { isPinned: !note.isPinned });
+        loadNotes();
+        onNotesChange?.();
+    };
+
+    const handleToggleFavorite = (note: Note) => {
+        updateNote(note.id, { isFavorite: !note.isFavorite });
         loadNotes();
         onNotesChange?.();
     };
@@ -503,6 +509,7 @@ export function KeepView({ selectedNoteId, onNoteSelected, onNotesChange }: Keep
                                     labels={labels}
                                     onEdit={() => setEditingNote(note)}
                                     onTogglePin={() => handleTogglePin(note)}
+                                    onToggleFavorite={() => handleToggleFavorite(note)}
                                     onToggleArchive={() => handleToggleArchive(note)}
                                     onChangeColor={(color) => handleChangeColor(note, color)}
                                     onDelete={() => handleDelete(note.id)}
@@ -529,6 +536,7 @@ export function KeepView({ selectedNoteId, onNoteSelected, onNotesChange }: Keep
                                     labels={labels}
                                     onEdit={() => setEditingNote(note)}
                                     onTogglePin={() => handleTogglePin(note)}
+                                    onToggleFavorite={() => handleToggleFavorite(note)}
                                     onToggleArchive={() => handleToggleArchive(note)}
                                     onChangeColor={(color) => handleChangeColor(note, color)}
                                     onDelete={() => handleDelete(note.id)}
@@ -803,6 +811,7 @@ function NoteCard({
     labels,
     onEdit,
     onTogglePin,
+    onToggleFavorite,
     onToggleArchive,
     onChangeColor,
     onDelete,
@@ -812,6 +821,7 @@ function NoteCard({
     labels: Label[];
     onEdit: () => void;
     onTogglePin: () => void;
+    onToggleFavorite: () => void;
     onToggleArchive: () => void;
     onChangeColor: (color: string) => void;
     onDelete: () => void;
@@ -881,6 +891,20 @@ function NoteCard({
                     title={note.isPinned ? '고정 해제' : '고정'}
                 >
                     <Pin className={`w-3.5 h-3.5 ${note.isPinned ? 'fill-current' : ''}`} />
+                </Button>
+
+                {/* Favorite Star */}
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`h-7 w-7 p-0 hover:bg-gray-200/50 ${note.isFavorite ? 'text-yellow-500' : ''}`}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleFavorite();
+                    }}
+                    title={note.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+                >
+                    <Star className={`w-3.5 h-3.5 ${note.isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`} />
                 </Button>
 
                 {/* Color Picker */}

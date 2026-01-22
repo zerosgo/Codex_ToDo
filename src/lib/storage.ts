@@ -268,7 +268,7 @@ export function saveQuickLinks(links: QuickLink[]): void {
     localStorage.setItem(QUICK_LINKS_KEY, JSON.stringify(links));
 }
 
-export function addQuickLink(name: string, url: string): QuickLink {
+export function addQuickLink(name: string, url: string, options: Partial<QuickLink> = {}): QuickLink {
     const links = getQuickLinks();
     const maxOrder = Math.max(...links.map(l => l.order), -1);
     const newLink: QuickLink = {
@@ -276,6 +276,7 @@ export function addQuickLink(name: string, url: string): QuickLink {
         name,
         url,
         order: maxOrder + 1,
+        ...options
     };
     links.push(newLink);
     saveQuickLinks(links);

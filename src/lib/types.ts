@@ -28,6 +28,7 @@ export interface Task {
     order: number;
     createdAt: string;
     isPinned?: boolean;
+    isFavorite?: boolean; // For favorites view
     highlightLevel?: 0 | 1 | 2 | 3; // 0=none, 1=Blue, 2=Green, 3=Purple
     subtasks?: Subtask[]; // Checklist items
 }
@@ -57,6 +58,7 @@ export interface QuickLink {
     url: string;
     order: number;
     isPinned?: boolean;
+    isFavorite?: boolean; // For favorites view
 }
 
 // Label (Tag) for notes
@@ -78,6 +80,7 @@ export interface Note {
     order: number;
     createdAt: string;
     labels?: string[]; // Array of Label IDs
+    isFavorite?: boolean; // For favorites view
 }
 
 // Predefined color palette for notes (Google Keep style)

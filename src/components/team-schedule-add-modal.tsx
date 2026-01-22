@@ -16,7 +16,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarIcon, Clock, User, Link } from 'lucide-react';
+import { CalendarIcon, Clock, User, Link, Star } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { addTask, updateTask, deleteTask } from '@/lib/storage';
@@ -45,6 +45,7 @@ export function TeamScheduleAddModal({
     const [endTime, setEndTime] = useState('');
     const [highlightLevel, setHighlightLevel] = useState<string>('0');
     const [resourceUrl, setResourceUrl] = useState('');
+    const [isFavorite, setIsFavorite] = useState(false);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
     // Reset form when modal opens
@@ -72,6 +73,7 @@ export function TeamScheduleAddModal({
 
                 setHighlightLevel(existingTask.highlightLevel?.toString() || '0');
                 setResourceUrl(existingTask.resourceUrl || '');
+                setIsFavorite(existingTask.isFavorite || false);
             } else {
                 // Create mode - set default time to next full hour
                 const now = new Date();
@@ -89,6 +91,7 @@ export function TeamScheduleAddModal({
                 setEndTime(defaultEndTime);
                 setHighlightLevel('0');
                 setResourceUrl('');
+                setIsFavorite(false);
             }
         }
     }, [isOpen, initialDate, existingTask]);
@@ -114,6 +117,7 @@ export function TeamScheduleAddModal({
                 dueTime: dueTimeString,
                 highlightLevel: parseInt(highlightLevel, 10) as 0 | 1 | 2 | 3,
                 resourceUrl: resourceUrl.trim() || undefined,
+                isFavorite,
             });
         } else {
             addTask(
@@ -124,6 +128,7 @@ export function TeamScheduleAddModal({
                     dueTime: dueTimeString,
                     highlightLevel: parseInt(highlightLevel, 10) as 0 | 1 | 2 | 3,
                     resourceUrl: resourceUrl.trim() || undefined,
+                    isFavorite,
                 }
             );
         }
@@ -174,7 +179,17 @@ export function TeamScheduleAddModal({
                 onKeyDown={handleKeyDown}
             >
                 <DialogHeader>
-                    <DialogTitle>{existingTask ? '팀 일정 수정' : '팀 일정 추가'}</DialogTitle>
+                    <div className="flex items-center justify-between">
+                        <DialogTitle>{existingTask ? '팀 일정 수정' : '팀 일정 추가'}</DialogTitle>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsFavorite(!isFavorite)}
+                            className={`text-gray-400 hover:text-yellow-500 ${isFavorite ? 'text-yellow-500' : ''}`}
+                        >
+                            <Star className={`w-5 h-5 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+                        </Button>
+                    </div>
                 </DialogHeader>
 
                 <div className="space-y-4">
