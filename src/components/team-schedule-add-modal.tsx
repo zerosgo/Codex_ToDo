@@ -179,7 +179,7 @@ export function TeamScheduleAddModal({
                 onKeyDown={handleKeyDown}
             >
                 <DialogHeader>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
                         <DialogTitle>{existingTask ? '팀 일정 수정' : '팀 일정 추가'}</DialogTitle>
                         <button
                             type="button"

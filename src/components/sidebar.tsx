@@ -756,7 +756,7 @@ export function Sidebar({
             < Dialog open={isQuickLinkDialogOpen} onOpenChange={setIsQuickLinkDialogOpen} >
                 <DialogContent>
                     <DialogHeader>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
                             <DialogTitle>
                                 {editingQuickLink ? '파일 수정' : '자주 쓰는 파일 추가'}
                             </DialogTitle>

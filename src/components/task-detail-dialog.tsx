@@ -306,7 +306,7 @@ export function TaskDetailDialog({
                     onKeyDown={handleKeyDown}
                 >
                     <DialogHeader>
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
                             <DialogTitle>할 일 상세</DialogTitle>
                             <button
                                 type="button"
