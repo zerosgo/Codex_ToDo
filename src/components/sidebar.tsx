@@ -760,14 +760,13 @@ export function Sidebar({
                             <DialogTitle>
                                 {editingQuickLink ? '파일 수정' : '자주 쓰는 파일 추가'}
                             </DialogTitle>
-                            <Button
-                                variant="ghost"
-                                size="sm"
+                            <button
+                                type="button"
                                 onClick={() => setQuickLinkFavorite(!quickLinkFavorite)}
-                                className={`text-gray-400 hover:text-yellow-500 ${quickLinkFavorite ? 'text-yellow-500' : ''}`}
+                                className={`p-1 rounded-md transition-colors text-gray-400 hover:text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-800 ${quickLinkFavorite ? 'text-yellow-500' : ''}`}
                             >
-                                <Star className={`w-5 h-5 ${quickLinkFavorite ? 'fill-yellow-500' : ''}`} />
-                            </Button>
+                                <Star className={`w-6 h-6 ${quickLinkFavorite ? 'fill-yellow-500' : ''}`} />
+                            </button>
                         </div>
                     </DialogHeader>
                     <div className="space-y-3">

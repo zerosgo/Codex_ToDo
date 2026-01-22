@@ -147,15 +147,14 @@ export function TaskItem({
                 {/* Actions */}
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className={`h-8 w-8 p-0 opacity-0 group-hover:opacity-100 ${task.isFavorite ? 'opacity-100 text-yellow-500' : 'text-gray-400 hover:text-yellow-500'}`}
+                        <button
+                            type="button"
+                            className={`p-1 rounded-md transition-colors opacity-0 group-hover:opacity-100 ${task.isFavorite ? 'opacity-100 text-yellow-500' : 'text-gray-400 hover:text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-800'}`}
                             onClick={handleToggleFavorite}
                             title={task.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
                         >
-                            <Star className={`h-4 w-4 ${task.isFavorite ? 'fill-yellow-500' : ''}`} />
-                        </Button>
+                            <Star className={`w-5 h-5 ${task.isFavorite ? 'fill-yellow-500' : ''}`} />
+                        </button>
                         <Button
                             variant="ghost"
                             size="sm"

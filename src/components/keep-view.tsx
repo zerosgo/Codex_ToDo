@@ -894,18 +894,17 @@ function NoteCard({
                 </Button>
 
                 {/* Favorite Star */}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`h-7 w-7 p-0 hover:bg-gray-200/50 ${note.isFavorite ? 'text-yellow-500' : ''}`}
+                <button
+                    type="button"
+                    className={`p-1 rounded transition-colors hover:bg-gray-200/50 ${note.isFavorite ? 'text-yellow-500' : ''}`}
                     onClick={(e) => {
                         e.stopPropagation();
                         onToggleFavorite();
                     }}
                     title={note.isFavorite ? '즐겨찾기 해제' : '즐겨찾기 추가'}
                 >
-                    <Star className={`w-3.5 h-3.5 ${note.isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`} />
-                </Button>
+                    <Star className={`w-4 h-4 ${note.isFavorite ? 'fill-yellow-500 text-yellow-500' : ''}`} />
+                </button>
 
                 {/* Color Picker */}
                 <Popover>

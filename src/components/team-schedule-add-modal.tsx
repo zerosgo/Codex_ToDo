@@ -181,14 +181,13 @@ export function TeamScheduleAddModal({
                 <DialogHeader>
                     <div className="flex items-center justify-between">
                         <DialogTitle>{existingTask ? '팀 일정 수정' : '팀 일정 추가'}</DialogTitle>
-                        <Button
-                            variant="ghost"
-                            size="sm"
+                        <button
+                            type="button"
                             onClick={() => setIsFavorite(!isFavorite)}
-                            className={`text-gray-400 hover:text-yellow-500 ${isFavorite ? 'text-yellow-500' : ''}`}
+                            className={`p-1 rounded-md transition-colors text-gray-400 hover:text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-800 ${isFavorite ? 'text-yellow-500' : ''}`}
                         >
-                            <Star className={`w-5 h-5 ${isFavorite ? 'fill-yellow-500' : ''}`} />
-                        </Button>
+                            <Star className={`w-6 h-6 ${isFavorite ? 'fill-yellow-500' : ''}`} />
+                        </button>
                     </div>
                 </DialogHeader>
 
