@@ -38,6 +38,7 @@ export default function Home() {
   const [notesVersion, setNotesVersion] = useState(0);
   const [isTeamScheduleModalOpen, setIsTeamScheduleModalOpen] = useState(false);
   const [editingScheduleTask, setEditingScheduleTask] = useState<Task | null>(null);
+  const [collectionGroups, setCollectionGroups] = useState<string[]>(['CP', 'OLB', 'LASER', '라미1', '라미2']);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Load categories from LocalStorage
@@ -90,6 +91,21 @@ export default function Home() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  // Load collectionGroups from calendar settings in localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('calendar-settings');
+      if (saved) {
+        const settings = JSON.parse(saved);
+        if (settings.collectionGroups && Array.isArray(settings.collectionGroups)) {
+          setCollectionGroups(settings.collectionGroups);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load collectionGroups:', e);
+    }
+  }, []);
 
   // Keyboard shortcuts: Ctrl+` (sidebar toggle), Ctrl+1/2/3 (layout switch), Ctrl+6~0 (presets), Ctrl+Arrow (view toggle)
   useEffect(() => {
@@ -612,6 +628,7 @@ export default function Home() {
         onClose={() => setDetailTask(null)}
         onTaskChange={handleTasksChange}
         isNewTask={detailTask ? !tasks.find(t => t.id === detailTask.id) : false}
+        collectionGroups={collectionGroups}
       />
 
       <ImportExportDialog

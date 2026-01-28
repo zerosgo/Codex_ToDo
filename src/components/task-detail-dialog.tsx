@@ -32,6 +32,7 @@ interface TaskDetailDialogProps {
     onTaskChange: () => void;
     onSortByDate?: () => void;
     isNewTask?: boolean;
+    collectionGroups?: string[]; // 취합 그룹 목록
 }
 
 export function TaskDetailDialog({
@@ -41,6 +42,7 @@ export function TaskDetailDialog({
     onTaskChange,
     onSortByDate,
     isNewTask = false,
+    collectionGroups = [],
 }: TaskDetailDialogProps) {
     const [title, setTitle] = useState('');
     const [isFavorite, setIsFavorite] = useState(false);
@@ -57,6 +59,7 @@ export function TaskDetailDialog({
     const [isNotesExpanded, setIsNotesExpanded] = useState(false);
     const [subtasks, setSubtasks] = useState<Subtask[]>([]);
     const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+    const [isCollectionTask, setIsCollectionTask] = useState(false);
 
     // Get existing tags for autocomplete (excluding already added tags)
     const tagSuggestions = React.useMemo(() => {
@@ -81,6 +84,7 @@ export function TaskDetailDialog({
             setIsNotesExpanded(false);  // Reset expanded notes when switching tasks
             setSubtasks(task.subtasks || []);
             setNewSubtaskTitle('');
+            setIsCollectionTask(task.isCollectionTask || false);
         }
     }, [task]);
 
@@ -96,6 +100,7 @@ export function TaskDetailDialog({
                     tags,
                     subtasks,
                     isFavorite,
+                    isCollectionTask,
                 });
             } else {
                 // Update existing task
@@ -109,6 +114,7 @@ export function TaskDetailDialog({
                     tags,
                     subtasks,
                     isFavorite,
+                    isCollectionTask,
                 });
             }
 
@@ -528,15 +534,47 @@ export function TaskDetailDialog({
 
                         {/* Subtasks/Checklist */}
                         <div>
-                            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
-                                <ListChecks className="w-3.5 h-3.5" />
-                                체크리스트
-                                {subtasks.length > 0 && (
-                                    <span className="ml-2 text-xs text-gray-500">
-                                        ({subtasks.filter(s => s.completed).length}/{subtasks.length})
-                                    </span>
-                                )}
-                            </label>
+                            <div className="flex items-center justify-between">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
+                                    <ListChecks className="w-3.5 h-3.5" />
+                                    체크리스트
+                                    {subtasks.length > 0 && (
+                                        <span className="ml-2 text-xs text-gray-500">
+                                            ({subtasks.filter(s => s.completed).length}/{subtasks.length})
+                                        </span>
+                                    )}
+                                </label>
+                                {/* 취합 Toggle */}
+                                <label className="flex items-center gap-1.5 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={isCollectionTask}
+                                        onChange={(e) => {
+                                            const checked = e.target.checked;
+                                            setIsCollectionTask(checked);
+
+                                            if (checked && collectionGroups.length > 0) {
+                                                // Add preset groups (avoid duplicates)
+                                                const existingTitles = subtasks.map(s => s.title);
+                                                const newSubtasks: Subtask[] = collectionGroups
+                                                    .filter(g => !existingTitles.includes(g))
+                                                    .map(g => ({
+                                                        id: `subtask-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                                        title: g,
+                                                        completed: false,
+                                                    }));
+                                                setSubtasks([...newSubtasks, ...subtasks]);
+                                            } else if (!checked) {
+                                                // Remove preset groups (keep user-added items)
+                                                const newSubtasks = subtasks.filter(s => !collectionGroups.includes(s.title));
+                                                setSubtasks(newSubtasks);
+                                            }
+                                        }}
+                                        className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                    />
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">취합</span>
+                                </label>
+                            </div>
 
                             {/* Progress bar */}
                             {subtasks.length > 0 && (

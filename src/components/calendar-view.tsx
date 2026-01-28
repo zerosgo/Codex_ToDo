@@ -637,24 +637,9 @@ export function CalendarView({
                                         >
                                             {/* 1. Schedule Tasks (Simple Text) */}
                                             {/* Past weeks: limit to 3, Current/Future weeks: show all */}
-                                            {(isWeekPast ? scheduleTasks.slice(0, 3) : scheduleTasks).map((task) => {
-                                                // Border Logic:
-                                                // - All Schedules: 3px left border
-                                                // - Active: Yellow
-                                                // - Executive (Level 1-3): Custom settings
-                                                // - Others: Gray
 
-                                                const isActive = isMeetingActive(task);
-                                                const highlightLevel = task.highlightLevel || 0;
-                                                const isExecutive = highlightLevel > 0;
-
-                                                // Determine base color for executive
-                                                let execColorKey = 'gray';
-                                                if (isExecutive && settings.executiveColors) {
-                                                    execColorKey = settings.executiveColors[highlightLevel as 1 | 2 | 3] || 'gray';
-                                                }
-
-                                                // Helper to get Tailwind classes or raw colors
+                                            {/* Helper to get Tailwind classes or raw colors - shared by Team Schedule and Regular Tasks */}
+                                            {(() => {
                                                 const getColorValue = (colorKey: string, type: 'border' | 'bg' | 'text', lightness?: number) => {
                                                     // Standard Tailwind map for 'border-KEY-500' equivalent approx colors
                                                     const colorMap: Record<string, string> = {
@@ -668,239 +653,298 @@ export function CalendarView({
                                                     };
 
                                                     const hslBase = colorMap[colorKey] || colorMap['gray'];
+                                                    let l = lightness ?? 50;
 
-                                                    // If lightness is provided, use it. Otherwise default based on type
-                                                    let l = 50;
-                                                    if (lightness !== undefined) {
-                                                        l = lightness;
-                                                    } else {
-                                                        if (type === 'bg') l = 96;
-                                                        if (type === 'border') l = 75;
-                                                        if (type === 'text') l = 30;
+                                                    if (type === 'border') {
+                                                        // Border uses direct lightness (0=dark, 100=light)
+                                                        // If lightness not provided, use a moderate value
+                                                        l = lightness ?? 80;
+                                                    } else if (type === 'bg') {
+                                                        // Background: High lightness (wash)
+                                                        l = lightness ?? 96;
                                                     }
 
                                                     return `hsl(${hslBase}, ${l}%)`;
                                                 };
 
-                                                const leftBorderClass = 'border-l-[3px]';
-
-                                                let leftBorderColorStyle: React.CSSProperties = {};
-
-                                                if (isActive) {
-                                                    // Active is always Yellow-ish
-                                                    leftBorderColorStyle = { borderLeftColor: '#eab308' }; // yellow-500
-                                                } else if (isExecutive) {
-                                                    // Executive Custom Border
-                                                    // Use Executive Border Lightness setting (common for all levels)
-                                                    // 0(dark) -> 100(light). We map direct value.
-                                                    leftBorderColorStyle = {
-                                                        borderLeftColor: getColorValue(execColorKey, 'border', settings.executiveBorderLightness)
-                                                    };
-                                                } else {
-                                                    // Normal Team Schedule -> Gray
-                                                    // Use standard Settings Border Darkness or fixed? 
-                                                    // User request implied "Bright Gray(Default)" for non-selected.
-                                                    // Let's use the 'executiveBorderLightness' for consistency if it's the requested "Common" slider,
-                                                    // OR fallback to standard gray. Original code was 'gray-300' (light).
-                                                    // User said "1) Border Color: Bright Gray(Default)... Brightness can be adjusted".
-                                                    // This implies 'gray' choice also uses the slider.
-                                                    leftBorderColorStyle = {
-                                                        borderLeftColor: getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)
-                                                    };
-                                                }
-
-
-                                                // Completed Task Visibility
-                                                if (task.completed && settings.completedMode === 'hidden') return null;
-
-                                                // Background Logic
-                                                let bgColorStyle = {};
-
-                                                if (isActive) {
-                                                    // Active uses class (yellow bg)
-                                                    // We'll leave bgColorStyle empty and let 'styleClasses' handle it via tailwind classes,
-                                                    // OR override here. Existing code used classes.
-                                                } else {
-                                                    if (isExecutive && settings.executiveBgMode === 'color') {
-                                                        // Use Level Color for BG
-                                                        bgColorStyle = { backgroundColor: getColorValue(execColorKey, 'bg', settings.executiveBgLightness) };
-                                                    } else {
-                                                        // Gray Mode (Unified)
-                                                        // Applies to both Executive (if gray mode) AND Regular Team Schedules
-                                                        // Use `executiveBgLightness` or standard `bgLightness`? 
-                                                        // User req: "3) Background Color... Bright Gray (Default) same as Team Leader (Regular)".
-                                                        // If 'color' selected, differentiate.
-                                                        // So: If 'gray' mode, use Unified Gray.
-                                                        // We'll use `executiveBgLightness` for executives/team schedules if that's what the slider controls.
-                                                        // Or maybe `bgLightness` (General)? The request asked for "Background color... brightness control separately".
-                                                        // Let's use `executiveBgLightness` for schedule items.
-                                                        bgColorStyle = { backgroundColor: getColorValue('gray', 'bg', settings.executiveBgLightness ?? 96) };
-                                                    }
-                                                }
-
-                                                const styleClasses = isActive
-                                                    ? 'bg-yellow-200 text-yellow-900 dark:bg-yellow-600 dark:text-yellow-50 font-bold'
-                                                    : 'text-gray-900 dark:text-gray-100 hover:brightness-95 dark:hover:bg-gray-700';
-
-                                                // Box Border Color (Top/Right/Bottom)
-                                                // Linked to Left Border Color logic generally, but User said "Divider Border (9 o'clock) follows Border Color".
-                                                // So we use the same color logic.
-                                                const boxBorderColor = isActive
-                                                    ? '#eab308'
-                                                    : (isExecutive
-                                                        ? getColorValue(execColorKey, 'border', settings.executiveBorderLightness)
-                                                        : getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)
-                                                    );
-
-                                                // Completed Style
-                                                const completedClass = task.completed && settings.completedMode === 'dimmed' ? 'opacity-50' :
-                                                    task.completed && settings.completedMode === 'strikethrough' ? 'line-through opacity-70' : '';
-
                                                 return (
-                                                    <div
-                                                        key={task.id}
-                                                        className={`flex items-center px-1 font-medium rounded cursor-pointer transition-colors w-full group/schedule border dark:border-gray-500 ${leftBorderClass} ${styleClasses} ${completedClass}`}
-                                                        style={{
-                                                            height: `${itemHeight}px`,
-                                                            fontSize: `${settings.fontSize}px`,
-                                                            ...bgColorStyle,
-                                                            ...leftBorderColorStyle,
-                                                            borderTopColor: settings.showBorder ? boxBorderColor : 'transparent',
-                                                            borderRightColor: settings.showBorder ? boxBorderColor : 'transparent',
-                                                            borderBottomColor: settings.showBorder ? boxBorderColor : 'transparent',
-                                                        }}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setEditingScheduleTask(task);
-                                                            setIsTeamScheduleModalOpen(true);
-                                                        }}
-                                                        title={task.organizer || `${task.title}${task.dueTime ? ` (${task.dueTime})` : ''} ${isActive ? '[진행 중]' : ''}`}
-                                                    >
-                                                        <div className="truncate w-full min-w-0 flex items-center gap-1">
-                                                            {task.dueTime ? <span className="mr-1 opacity-75 whitespace-nowrap">{task.dueTime.match(/(\d{2}:\d{2})/)?.[0] || task.dueTime}</span> : ''}
-                                                            <span className="truncate">{task.title}</span>
-                                                            <div className="ml-auto shrink-0 flex items-center gap-0.5">
-                                                                {task.resourceUrl && (
-                                                                    <Paperclip
-                                                                        className="w-3 h-3 text-gray-600 cursor-pointer hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            handleCopyUrl(task.resourceUrl!);
-                                                                            if (!e.ctrlKey && !e.metaKey) {
-                                                                                window.open(task.resourceUrl, '_blank');
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                )}
-                                                                {(settings.showExecutiveIndicator ?? true) && highlightLevel === 1 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[1] || 'gray', 'bg', 50) }} />}
-                                                                {(settings.showExecutiveIndicator ?? true) && highlightLevel === 2 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[2] || 'gray', 'bg', 50) }} />}
-                                                                {(settings.showExecutiveIndicator ?? true) && highlightLevel === 3 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[3] || 'gray', 'bg', 50) }} />}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                            {isWeekPast && scheduleTasks.length > 3 && (
-                                                <div className="text-[10px] text-gray-400 dark:text-gray-500 px-1 cursor-help" title={`${scheduleTasks.length - 3}개의 일정이 더 있습니다`}>
-                                                    + 팀 일정 {scheduleTasks.length - 3}개 더
-                                                </div>
-                                            )}
+                                                    <>
+                                                        {(isWeekPast ? scheduleTasks.slice(0, 3) : scheduleTasks).map((task) => {
+                                                            // Border Logic:
+                                                            // - All Schedules: 3px left border
+                                                            // - Active: Yellow
+                                                            // - Executive (Level 1-3): Custom settings
+                                                            // - Others: Gray
 
-                                            {/* Divider if both exist */}
-                                            {scheduleTasks.length > 0 && regularTasks.length > 0 && (
-                                                <div className="border-t border-dashed border-gray-300 dark:border-gray-600 my-1 mx-1" />
-                                            )}
+                                                            const isActive = isMeetingActive(task);
+                                                            const highlightLevel = task.highlightLevel || 0;
+                                                            const isExecutive = highlightLevel > 0;
 
-                                            {/* 2. Regular Tasks (Box Style) */}
-                                            {/* Past weeks: limit to 3, Current/Future weeks: show all */}
-                                            {(isWeekPast ? regularTasks.slice(0, 3) : regularTasks).map((task) => {
-                                                // Completed Task Visibility
-                                                if (task.completed && settings.completedMode === 'hidden') return null;
-
-                                                const taskColor = getTaskColor(task);
-                                                const isOverdue = task.dueDate && !task.completed &&
-                                                    new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0);
-
-                                                // Completed Style
-                                                const completedClass = task.completed && settings.completedMode === 'dimmed' ? 'opacity-50' :
-                                                    task.completed && settings.completedMode === 'strikethrough' ? 'opacity-70 line-through' : '';
-
-                                                const TaskStyle = task.completed
-                                                    ? {
-                                                        height: `${itemHeight}px`,
-                                                        fontSize: `${settings.fontSize}px`,
-                                                        borderLeft: '3px solid #d1d5db',
-                                                        // Use settings border for other sides? Regular tasks usually don't have border except left.
-                                                        // But if user wants border... let's stick to original style for Regular tasks (Box style)
-                                                        // User request "Colors & Style" mainly referred to "Team Schedule" (Gray bg).
-                                                        // For Regular tasks, we keep existing logic but apply fontsize/height.
-                                                    }
-                                                    : isOverdue
-                                                        ? {
-                                                            height: `${itemHeight}px`,
-                                                            fontSize: `${settings.fontSize}px`,
-                                                            backgroundColor: '#fee2e2',
-                                                            color: '#b91c1c',
-                                                            borderLeft: '3px solid #ef4444',
-                                                        }
-                                                        : {
-                                                            height: `${itemHeight}px`,
-                                                            fontSize: `${settings.fontSize}px`,
-                                                            backgroundColor: `${taskColor}15`,
-                                                            color: taskColor,
-                                                            borderLeft: `3px solid ${taskColor}`,
-                                                        };
-
-                                                return (
-                                                    <div
-                                                        key={task.id}
-                                                        draggable
-                                                        onDragStart={(e) => handleDragStart(e, task.id)}
-                                                        onDragEnd={() => setDraggedTaskId(null)}
-                                                        className={`group/task relative px-1.5 rounded cursor-grab active:cursor-grabbing transition-all w-full overflow-hidden flex items-center ${draggedTaskId === task.id ? 'opacity-50 scale-95' : ''
-                                                            } ${task.completed ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500' : 'dark:!bg-gray-700 dark:!text-gray-300'} ${completedClass}`}
-                                                        style={TaskStyle}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (task.categoryId === teamScheduleCategoryId) {
-                                                                setEditingScheduleTask(task);
-                                                                setIsTeamScheduleModalOpen(true);
-                                                            } else {
-                                                                onTaskClick(task);
+                                                            // Determine base color for executive
+                                                            let execColorKey = 'gray';
+                                                            if (isExecutive && settings.executiveColors) {
+                                                                execColorKey = settings.executiveColors[highlightLevel as 1 | 2 | 3] || 'gray';
                                                             }
-                                                        }}
-                                                        title={`${task.title}${task.dueTime ? ` (${task.dueTime})` : ''}`}
-                                                    >
-                                                        <div className="flex items-center justify-between w-full min-w-0">
-                                                            <div className="truncate flex-1 min-w-0 flex items-center">
-                                                                {task.dueTime && <span className="opacity-60 mr-1 whitespace-nowrap">{task.dueTime}</span>}
-                                                                <span className="truncate">{task.title}</span>
-                                                            </div>
-                                                            {task.resourceUrl && (
-                                                                <button
-                                                                    className="ml-1 p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 flex-shrink-0"
+
+                                                            // Helper to get Tailwind classes or raw colors
+                                                            const getColorValue = (colorKey: string, type: 'border' | 'bg' | 'text', lightness?: number) => {
+                                                                // Standard Tailwind map for 'border-KEY-500' equivalent approx colors
+                                                                const colorMap: Record<string, string> = {
+                                                                    gray: '220, 13%', // HSL base
+                                                                    red: '0, 84%',
+                                                                    green: '142, 71%',
+                                                                    blue: '217, 91%',
+                                                                    purple: '262, 83%',
+                                                                    orange: '24, 95%',
+                                                                    yellow: '48, 96%',
+                                                                };
+
+                                                                const hslBase = colorMap[colorKey] || colorMap['gray'];
+
+                                                                // If lightness is provided, use it. Otherwise default based on type
+                                                                let l = 50;
+                                                                if (lightness !== undefined) {
+                                                                    l = lightness;
+                                                                } else {
+                                                                    if (type === 'bg') l = 96;
+                                                                    if (type === 'border') l = 75;
+                                                                    if (type === 'text') l = 30;
+                                                                }
+
+                                                                return `hsl(${hslBase}, ${l}%)`;
+                                                            };
+
+                                                            const leftBorderClass = 'border-l-[3px]';
+
+                                                            let leftBorderColorStyle: React.CSSProperties = {};
+
+                                                            if (isActive) {
+                                                                // Active is always Yellow-ish
+                                                                leftBorderColorStyle = { borderLeftColor: '#eab308' }; // yellow-500
+                                                            } else if (isExecutive) {
+                                                                // Executive Custom Border
+                                                                // Use Executive Border Lightness setting (common for all levels)
+                                                                // 0(dark) -> 100(light). We map direct value.
+                                                                leftBorderColorStyle = {
+                                                                    borderLeftColor: getColorValue(execColorKey, 'border', settings.executiveBorderLightness)
+                                                                };
+                                                            } else {
+                                                                // Normal Team Schedule -> Gray
+                                                                // Use standard Settings Border Darkness or fixed? 
+                                                                // User request implied "Bright Gray(Default)" for non-selected.
+                                                                // Let's use the 'executiveBorderLightness' for consistency if it's the requested "Common" slider,
+                                                                // OR fallback to standard gray. Original code was 'gray-300' (light).
+                                                                // User said "1) Border Color: Bright Gray(Default)... Brightness can be adjusted".
+                                                                // This implies 'gray' choice also uses the slider.
+                                                                leftBorderColorStyle = {
+                                                                    borderLeftColor: getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)
+                                                                };
+                                                            }
+
+
+                                                            // Completed Task Visibility
+                                                            if (task.completed && settings.completedMode === 'hidden') return null;
+
+                                                            // Background Logic
+                                                            let bgColorStyle = {};
+
+                                                            if (isActive) {
+                                                                // Active uses class (yellow bg)
+                                                                // We'll leave bgColorStyle empty and let 'styleClasses' handle it via tailwind classes,
+                                                                // OR override here. Existing code used classes.
+                                                            } else {
+                                                                if (isExecutive && settings.executiveBgMode === 'color') {
+                                                                    // Use Level Color for BG
+                                                                    bgColorStyle = { backgroundColor: getColorValue(execColorKey, 'bg', settings.executiveBgLightness) };
+                                                                } else {
+                                                                    // Gray Mode (Unified)
+                                                                    // Applies to both Executive (if gray mode) AND Regular Team Schedules
+                                                                    // Use `executiveBgLightness` or standard `bgLightness`? 
+                                                                    // User req: "3) Background Color... Bright Gray (Default) same as Team Leader (Regular)".
+                                                                    // If 'color' selected, differentiate.
+                                                                    // So: If 'gray' mode, use Unified Gray.
+                                                                    // We'll use `executiveBgLightness` for executives/team schedules if that's what the slider controls.
+                                                                    // Or maybe `bgLightness` (General)? The request asked for "Background color... brightness control separately".
+                                                                    // Let's use `executiveBgLightness` for schedule items.
+                                                                    bgColorStyle = { backgroundColor: getColorValue('gray', 'bg', settings.executiveBgLightness ?? 96) };
+                                                                }
+                                                            }
+
+                                                            const styleClasses = isActive
+                                                                ? 'bg-yellow-200 text-yellow-900 dark:bg-yellow-600 dark:text-yellow-50 font-bold'
+                                                                : 'text-gray-900 dark:text-gray-100 hover:brightness-95 dark:hover:bg-gray-700';
+
+                                                            // Box Border Color (Top/Right/Bottom)
+                                                            // Linked to Left Border Color logic generally, but User said "Divider Border (9 o'clock) follows Border Color".
+                                                            // So we use the same color logic.
+                                                            const boxBorderColor = isActive
+                                                                ? '#eab308'
+                                                                : (isExecutive
+                                                                    ? getColorValue(execColorKey, 'border', settings.executiveBorderLightness)
+                                                                    : getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)
+                                                                );
+
+                                                            // Completed Style
+                                                            const completedClass = task.completed && settings.completedMode === 'dimmed' ? 'opacity-50' :
+                                                                task.completed && settings.completedMode === 'strikethrough' ? 'line-through opacity-70' : '';
+
+                                                            return (
+                                                                <div
+                                                                    key={task.id}
+                                                                    className={`flex items-center px-1 font-medium rounded cursor-pointer transition-colors w-full group/schedule border dark:border-gray-500 ${leftBorderClass} ${styleClasses} ${completedClass}`}
+                                                                    style={{
+                                                                        height: `${itemHeight}px`,
+                                                                        fontSize: `${settings.fontSize}px`,
+                                                                        ...bgColorStyle,
+                                                                        ...leftBorderColorStyle,
+                                                                        borderTopColor: settings.showBorder ? boxBorderColor : 'transparent',
+                                                                        borderRightColor: settings.showBorder ? boxBorderColor : 'transparent',
+                                                                        borderBottomColor: settings.showBorder ? boxBorderColor : 'transparent',
+                                                                    }}
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        handleCopyUrl(task.resourceUrl!);
-                                                                        if (!e.ctrlKey && !e.metaKey) {
-                                                                            window.open(task.resourceUrl, '_blank');
+                                                                        setEditingScheduleTask(task);
+                                                                        setIsTeamScheduleModalOpen(true);
+                                                                    }}
+                                                                    title={task.organizer || `${task.title}${task.dueTime ? ` (${task.dueTime})` : ''} ${isActive ? '[진행 중]' : ''}`}
+                                                                >
+                                                                    <div className="truncate w-full min-w-0 flex items-center gap-1">
+                                                                        {task.dueTime ? <span className="mr-1 opacity-75 whitespace-nowrap">{task.dueTime.match(/(\d{2}:\d{2})/)?.[0] || task.dueTime}</span> : ''}
+                                                                        <span className="truncate">{task.title}</span>
+                                                                        <div className="ml-auto shrink-0 flex items-center gap-0.5">
+                                                                            {task.resourceUrl && (
+                                                                                <Paperclip
+                                                                                    className="w-3 h-3 text-gray-600 cursor-pointer hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleCopyUrl(task.resourceUrl!);
+                                                                                        if (!e.ctrlKey && !e.metaKey) {
+                                                                                            window.open(task.resourceUrl, '_blank');
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                            )}
+                                                                            {(settings.showExecutiveIndicator ?? true) && highlightLevel === 1 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[1] || 'gray', 'bg', 50) }} />}
+                                                                            {(settings.showExecutiveIndicator ?? true) && highlightLevel === 2 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[2] || 'gray', 'bg', 50) }} />}
+                                                                            {(settings.showExecutiveIndicator ?? true) && highlightLevel === 3 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[3] || 'gray', 'bg', 50) }} />}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                        {isWeekPast && scheduleTasks.length > 3 && (
+                                                            <div className="text-[10px] text-gray-400 dark:text-gray-500 px-1 cursor-help" title={`${scheduleTasks.length - 3}개의 일정이 더 있습니다`}>
+                                                                + 팀 일정 {scheduleTasks.length - 3}개 더
+                                                            </div>
+                                                        )}
+
+                                                        {/* Divider if both exist */}
+                                                        {scheduleTasks.length > 0 && regularTasks.length > 0 && (
+                                                            <div className="border-t border-dashed border-gray-300 dark:border-gray-600 my-1 mx-1" />
+                                                        )}
+
+                                                        {/* 2. Regular Tasks (Box Style) */}
+                                                        {/* Past weeks: limit to 3, Current/Future weeks: show all */}
+                                                        {(isWeekPast ? regularTasks.slice(0, 3) : regularTasks).map((task) => {
+                                                            // Completed Task Visibility
+                                                            if (task.completed && settings.completedMode === 'hidden') return null;
+
+                                                            const taskColor = getTaskColor(task);
+                                                            const isOverdue = task.dueDate && !task.completed &&
+                                                                new Date(task.dueDate).setHours(0, 0, 0, 0) < new Date().setHours(0, 0, 0, 0);
+
+                                                            // Completed Style
+                                                            const completedClass = task.completed && settings.completedMode === 'dimmed' ? 'opacity-50' :
+                                                                task.completed && settings.completedMode === 'strikethrough' ? 'opacity-70 line-through' : '';
+
+                                                            const TaskStyle = task.completed
+                                                                ? {
+                                                                    height: `${itemHeight}px`,
+                                                                    fontSize: `${settings.fontSize}px`,
+                                                                    borderLeft: '3px solid #d1d5db',
+                                                                    // Apply border to all sides when showBorder is enabled
+                                                                    borderTop: settings.showBorder ? `1px solid ${getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)}` : undefined,
+                                                                    borderRight: settings.showBorder ? `1px solid ${getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)}` : undefined,
+                                                                    borderBottom: settings.showBorder ? `1px solid ${getColorValue('gray', 'border', settings.executiveBorderLightness ?? 80)}` : undefined,
+                                                                }
+                                                                : isOverdue
+                                                                    ? {
+                                                                        height: `${itemHeight}px`,
+                                                                        fontSize: `${settings.fontSize}px`,
+                                                                        backgroundColor: '#fee2e2',
+                                                                        color: '#b91c1c',
+                                                                        borderLeft: '3px solid #ef4444',
+                                                                        // Apply border to all sides when showBorder is enabled (overdue uses red tint)
+                                                                        borderTop: settings.showBorder ? `1px solid ${getColorValue('red', 'border', settings.executiveBorderLightness ?? 80)}` : undefined,
+                                                                        borderRight: settings.showBorder ? `1px solid ${getColorValue('red', 'border', settings.executiveBorderLightness ?? 80)}` : undefined,
+                                                                        borderBottom: settings.showBorder ? `1px solid ${getColorValue('red', 'border', settings.executiveBorderLightness ?? 80)}` : undefined,
+                                                                    }
+                                                                    : {
+                                                                        height: `${itemHeight}px`,
+                                                                        fontSize: `${settings.fontSize}px`,
+                                                                        backgroundColor: `${taskColor}15`,
+                                                                        color: taskColor,
+                                                                        borderLeft: `3px solid ${taskColor}`,
+                                                                        // Apply category-based border to all sides when showBorder is enabled
+                                                                        // Use taskColor with 50% opacity (hex color + '80' suffix)
+                                                                        borderTop: settings.showBorder ? `1px solid ${taskColor}80` : undefined,
+                                                                        borderRight: settings.showBorder ? `1px solid ${taskColor}80` : undefined,
+                                                                        borderBottom: settings.showBorder ? `1px solid ${taskColor}80` : undefined,
+                                                                    };
+
+                                                            return (
+                                                                <div
+                                                                    key={task.id}
+                                                                    draggable
+                                                                    onDragStart={(e) => handleDragStart(e, task.id)}
+                                                                    onDragEnd={() => setDraggedTaskId(null)}
+                                                                    className={`group/task relative px-1.5 rounded cursor-grab active:cursor-grabbing transition-all w-full overflow-hidden flex items-center ${draggedTaskId === task.id ? 'opacity-50 scale-95' : ''
+                                                                        } ${task.completed ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500' : 'dark:!bg-gray-700 dark:!text-gray-300'} ${completedClass}`}
+                                                                    style={TaskStyle}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        if (task.categoryId === teamScheduleCategoryId) {
+                                                                            setEditingScheduleTask(task);
+                                                                            setIsTeamScheduleModalOpen(true);
+                                                                        } else {
+                                                                            onTaskClick(task);
                                                                         }
                                                                     }}
-                                                                    title="자료 열기"
+                                                                    title={`${task.title}${task.dueTime ? ` (${task.dueTime})` : ''}`}
                                                                 >
-                                                                    <Paperclip className="w-3 h-3 text-gray-600 dark:text-gray-400" />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+                                                                    <div className="flex items-center justify-between w-full min-w-0">
+                                                                        <div className="truncate flex-1 min-w-0 flex items-center">
+                                                                            {task.dueTime && <span className="opacity-60 mr-1 whitespace-nowrap">{task.dueTime}</span>}
+                                                                            <span className="truncate">{task.title}</span>
+                                                                        </div>
+                                                                        {task.resourceUrl && (
+                                                                            <button
+                                                                                className="ml-1 p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 flex-shrink-0"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleCopyUrl(task.resourceUrl!);
+                                                                                    if (!e.ctrlKey && !e.metaKey) {
+                                                                                        window.open(task.resourceUrl, '_blank');
+                                                                                    }
+                                                                                }}
+                                                                                title="자료 열기"
+                                                                            >
+                                                                                <Paperclip className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
 
-                                            {isWeekPast && regularTasks.length > 3 && (
-                                                <div className="text-[10px] text-gray-400 dark:text-gray-500 px-1">
-                                                    +{regularTasks.length - 3}개 더
-                                                </div>
-                                            )}
+                                                        {isWeekPast && regularTasks.length > 3 && (
+                                                            <div className="text-[10px] text-gray-400 dark:text-gray-500 px-1">
+                                                                +{regularTasks.length - 3}개 더
+                                                            </div>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </motion.div>
                                 );

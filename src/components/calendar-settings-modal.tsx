@@ -29,6 +29,8 @@ export interface CalendarSettings {
     executiveBgMode: 'gray' | 'color';
     executiveBgLightness: number; // 0~100 (Common)
     showExecutiveIndicator: boolean; // Toggle for the dot indicator
+    // Collection Template (취합 템플릿)
+    collectionGroups: string[]; // 취합 시 자동 추가되는 그룹 목록
 }
 
 export const DEFAULT_SETTINGS: CalendarSettings = {
@@ -50,6 +52,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
     executiveBgMode: 'gray',
     executiveBgLightness: 96,
     showExecutiveIndicator: true,
+    collectionGroups: ['CP', 'OLB', 'LASER', '라미1', '라미2'],
 };
 
 interface CalendarSettingsModalProps {
@@ -451,6 +454,53 @@ export function CalendarSettingsModal({
                                 />
                                 <span className="text-sm font-medium w-8 text-right">{settings.executiveBgLightness}</span>
                             </div>
+                        </div>
+                    </div>
+
+                    <hr className="border-gray-100 dark:border-gray-800" />
+
+                    {/* Collection Groups (취합 템플릿) */}
+                    <div className="space-y-3 pt-2">
+                        <h4 className="font-semibold text-sm text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <span className="w-1 h-4 bg-teal-500 rounded-full"></span>
+                            취합 그룹 설정
+                        </h4>
+                        <p className="text-xs text-gray-500">
+                            &quot;할 일 상세&quot;에서 &quot;취합&quot; 체크 시 자동으로 추가될 그룹 목록입니다.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                            {(settings.collectionGroups || []).map((group, index) => (
+                                <div
+                                    key={index}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm rounded-full"
+                                >
+                                    <span>{group}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newGroups = [...(settings.collectionGroups || [])];
+                                            newGroups.splice(index, 1);
+                                            handleChange('collectionGroups', newGroups);
+                                        }}
+                                        className="hover:bg-teal-200 dark:hover:bg-teal-800 rounded-full p-0.5"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const newGroup = prompt('추가할 그룹명을 입력하세요:');
+                                    if (newGroup && newGroup.trim()) {
+                                        const newGroups = [...(settings.collectionGroups || []), newGroup.trim()];
+                                        handleChange('collectionGroups', newGroups);
+                                    }
+                                }}
+                                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                            >
+                                + 그룹 추가
+                            </button>
                         </div>
                     </div>
 

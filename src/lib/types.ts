@@ -32,6 +32,7 @@ export interface Task {
     isFavorite?: boolean; // For favorites view
     highlightLevel?: 0 | 1 | 2 | 3; // 0=none, 1=Blue, 2=Green, 3=Purple
     subtasks?: Subtask[]; // Checklist items
+    isCollectionTask?: boolean; // 취합 템플릿 적용 여부
 }
 
 export interface AppData {
