@@ -51,6 +51,7 @@ function AnimatedTaskItem({
     onClick,
     isExpanded,
     onToggleExpand,
+    taskClickMode,
 }: {
     task: Task;
     categoryColor: string;
@@ -63,6 +64,7 @@ function AnimatedTaskItem({
     onClick: () => void;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
+    taskClickMode?: 'single' | 'double';
 }) {
     const dragControls = useDragControls();
     const [isEditing, setIsEditing] = useState(false);
@@ -228,8 +230,18 @@ function AnimatedTaskItem({
                     borderLeft: isSelected ? `4px solid ${selectionBorderColor}` : `4px solid ${normalBorderColor}`,
                     borderRight: isSelected ? `4px solid ${selectionBorderColor}` : `4px solid ${normalBorderColor}`,
                 }}
-                onDoubleClick={() => onOpenDetail(task)}
-                onClick={onClick}
+                onDoubleClick={() => {
+                    if ((taskClickMode || 'single') === 'double') {
+                        onOpenDetail(task);
+                    }
+                }}
+                onClick={() => {
+                    if ((taskClickMode || 'single') === 'single') {
+                        onOpenDetail(task);
+                    } else {
+                        onClick();
+                    }
+                }}
             >
                 {/* Drag Handle + D-Day */}
                 <div className="flex flex-col items-center justify-between self-stretch">
@@ -290,29 +302,6 @@ function AnimatedTaskItem({
                             <div className="flex items-center gap-1 text-xs text-blue-500">
                                 <User className="w-3 h-3" />
                                 {task.assignee}
-                            </div>
-                        )}
-                        {((task.resourceUrls && task.resourceUrls.length > 0) || task.resourceUrl) && (
-                            <div className="flex items-center gap-1">
-                                {(task.resourceUrls && task.resourceUrls.length > 0
-                                    ? task.resourceUrls
-                                    : [task.resourceUrl]
-                                ).map((url, index) => (
-                                    <div
-                                        key={index}
-                                        className="flex items-center justify-center text-purple-500 cursor-pointer hover:text-purple-700 p-1.5 -m-1.5 rounded hover:bg-purple-50 transition-all hover:scale-125"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleCopyUrl(url);
-                                            if (!e.ctrlKey && !e.metaKey) {
-                                                window.open(url, '_blank');
-                                            }
-                                        }}
-                                        title={url}
-                                    >
-                                        <Paperclip className="w-4 h-3" />
-                                    </div>
-                                ))}
                             </div>
                         )}
                         {task.notes && (
@@ -402,6 +391,31 @@ function AnimatedTaskItem({
                             >
                                 {isExpanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                             </Button>
+                        )}
+
+                        {/* Clip icons at the end */}
+                        {((task.resourceUrls && task.resourceUrls.length > 0) || task.resourceUrl) && (
+                            <div className="flex items-center gap-1">
+                                {(task.resourceUrls && task.resourceUrls.length > 0
+                                    ? task.resourceUrls
+                                    : [task.resourceUrl]
+                                ).map((url, index) => (
+                                    <div
+                                        key={index}
+                                        className="flex items-center justify-center text-purple-500 cursor-pointer hover:text-purple-700 p-1.5 -m-1.5 rounded hover:bg-purple-50 dark:hover:bg-purple-900/30 transition-all hover:scale-125"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleCopyUrl(url);
+                                            if (!e.ctrlKey && !e.metaKey) {
+                                                window.open(url, '_blank');
+                                            }
+                                        }}
+                                        title={url}
+                                    >
+                                        <Paperclip className="w-4 h-3" />
+                                    </div>
+                                ))}
+                            </div>
                         )}
 
                     </div>
@@ -607,6 +621,22 @@ export function TaskList({ category, categories, tasks, onTasksChange, collectio
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [expandedTaskIds, setExpandedTaskIds] = useState<string[]>([]);
+    const [taskClickMode, setTaskClickMode] = useState<'single' | 'double'>('single');
+
+    // Load taskClickMode setting from localStorage
+    useEffect(() => {
+        const saved = localStorage.getItem('calendar-settings');
+        if (saved) {
+            try {
+                const settings = JSON.parse(saved);
+                if (settings.taskClickMode) {
+                    setTaskClickMode(settings.taskClickMode);
+                }
+            } catch (e) {
+                console.error('Failed to parse calendar settings', e);
+            }
+        }
+    }, []);
 
     const toggleTaskExpanded = (taskId: string, force?: boolean) => {
         setExpandedTaskIds(prev => {
@@ -1230,7 +1260,16 @@ export function TaskList({ category, categories, tasks, onTasksChange, collectio
                                                     animate={{ opacity: 1, x: 0 }}
                                                     exit={{ opacity: 0, x: 20 }}
                                                     className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-md"
-                                                    onDoubleClick={() => setDetailTask(task)}
+                                                    onClick={() => {
+                                                        if (taskClickMode === 'single') {
+                                                            setDetailTask(task);
+                                                        }
+                                                    }}
+                                                    onDoubleClick={() => {
+                                                        if (taskClickMode === 'double') {
+                                                            setDetailTask(task);
+                                                        }
+                                                    }}
                                                 >
                                                     <div className="text-gray-300 mt-0.5">
                                                         <GripVertical className="w-4 h-4" />

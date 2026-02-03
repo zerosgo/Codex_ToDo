@@ -16,7 +16,7 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from '@/components/ui/popover';
-import { CalendarIcon, Clock, User, Link, Star } from 'lucide-react';
+import { CalendarIcon, Clock, User, Link, Star, X, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { ko } from 'date-fns/locale';
 import { addTask, updateTask, deleteTask } from '@/lib/storage';
@@ -45,7 +45,7 @@ export function TeamScheduleAddModal({
     const [endTime, setEndTime] = useState('');
     const [highlightLevel, setHighlightLevel] = useState<string>('0');
     const [organizer, setOrganizer] = useState('');
-    const [resourceUrl, setResourceUrl] = useState('');
+    const [resourceUrls, setResourceUrls] = useState<string[]>(['']);
     const [isFavorite, setIsFavorite] = useState(false);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
@@ -74,7 +74,11 @@ export function TeamScheduleAddModal({
 
                 setHighlightLevel(existingTask.highlightLevel?.toString() || '0');
                 setOrganizer(existingTask.organizer || '');
-                setResourceUrl(existingTask.resourceUrl || '');
+                // Load resourceUrls (with fallback to resourceUrl for legacy)
+                const initialUrls = existingTask.resourceUrls && existingTask.resourceUrls.length > 0
+                    ? existingTask.resourceUrls
+                    : (existingTask.resourceUrl ? [existingTask.resourceUrl] : ['']);
+                setResourceUrls(initialUrls);
                 setIsFavorite(existingTask.isFavorite || false);
             } else {
                 // Create mode - set default time to next full hour
@@ -93,7 +97,7 @@ export function TeamScheduleAddModal({
                 setEndTime(defaultEndTime);
                 setHighlightLevel('0');
                 setOrganizer('');
-                setResourceUrl('');
+                setResourceUrls(['']);
                 setIsFavorite(false);
             }
         }
@@ -113,6 +117,10 @@ export function TeamScheduleAddModal({
 
         const dueTimeString = endTime ? `${startTime} - ${endTime}` : startTime;
 
+        // Filter out empty URLs and prepare for save
+        const validUrls = resourceUrls.filter(u => u.trim());
+        const legacyUrl = validUrls.length > 0 ? validUrls[0] : '';
+
         if (existingTask) {
             updateTask(existingTask.id, {
                 title: title.trim(),
@@ -120,7 +128,8 @@ export function TeamScheduleAddModal({
                 dueTime: dueTimeString,
                 highlightLevel: parseInt(highlightLevel, 10) as 0 | 1 | 2 | 3,
                 organizer: organizer.trim() || undefined,
-                resourceUrl: resourceUrl.trim() || undefined,
+                resourceUrl: legacyUrl || undefined,
+                resourceUrls: validUrls.length > 0 ? validUrls : undefined,
                 isFavorite,
             });
         } else {
@@ -132,7 +141,8 @@ export function TeamScheduleAddModal({
                     dueTime: dueTimeString,
                     highlightLevel: parseInt(highlightLevel, 10) as 0 | 1 | 2 | 3,
                     organizer: organizer.trim() || undefined,
-                    resourceUrl: resourceUrl.trim() || undefined,
+                    resourceUrl: legacyUrl || undefined,
+                    resourceUrls: validUrls.length > 0 ? validUrls : undefined,
                     isFavorite,
                     source: 'manual', // Mark as manually created - protected from team schedule import
                 }
@@ -307,18 +317,56 @@ export function TeamScheduleAddModal({
                         </select>
                     </div>
 
-                    {/* Resource URL */}
+                    {/* Resource URLs */}
                     <div>
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1">
                             <Link className="w-4 h-4" />
-                            회의 링크 (선택)
+                            자료 (선택)
                         </label>
-                        <Input
-                            value={resourceUrl}
-                            onChange={(e) => setResourceUrl(e.target.value)}
-                            placeholder="https://zoom.us/... 또는 Teams 링크"
-                            className="mt-1"
-                        />
+                        <div className="mt-1 space-y-2">
+                            {resourceUrls.map((url, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                    <Input
+                                        value={url}
+                                        onChange={(e) => {
+                                            const newUrls = [...resourceUrls];
+                                            newUrls[index] = e.target.value;
+                                            setResourceUrls(newUrls);
+                                        }}
+                                        placeholder="https://example.com/... (관련 자료 URL)"
+                                        className="flex-1"
+                                    />
+                                    {url && (
+                                        <button
+                                            type="button"
+                                            onClick={() => window.open(url, '_blank')}
+                                            className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+                                            title="링크 열기"
+                                        >
+                                            <Link className="w-4 h-4 text-blue-500" />
+                                        </button>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const newUrls = resourceUrls.filter((_, i) => i !== index);
+                                            setResourceUrls(newUrls.length > 0 ? newUrls : ['']);
+                                        }}
+                                        className="p-2 rounded-md text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        title="삭제"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={() => setResourceUrls([...resourceUrls, ''])}
+                                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 px-2 py-1 rounded"
+                            >
+                                <Plus className="w-3 h-3" /> 추가
+                            </button>
+                        </div>
                     </div>
                 </div>
 

@@ -32,6 +32,7 @@ export interface CalendarSettings {
     // Collection Template (취합 템플릿)
     collectionGroups: string[]; // 취합 시 자동 추가되는 그룹 목록
     checklistDisplayMode?: 'none' | 'text' | 'bar' | 'both'; // 체크리스트 표시 방식
+    taskClickMode?: 'single' | 'double'; // 일정 클릭 동작: single=원클릭, double=더블클릭
 }
 
 export const DEFAULT_SETTINGS: CalendarSettings = {
@@ -55,6 +56,7 @@ export const DEFAULT_SETTINGS: CalendarSettings = {
     showExecutiveIndicator: true,
     collectionGroups: ['CP', 'OLB', 'LASER', '라미1', '라미2'],
     checklistDisplayMode: 'none',
+    taskClickMode: 'single',
 };
 
 interface CalendarSettingsModalProps {
@@ -283,6 +285,28 @@ export function CalendarSettingsModal({
                                 <option value="bar">진행바 (하단 표시)</option>
                                 <option value="both">텍스트 + 진행바</option>
                             </select>
+                        </div>
+
+                        {/* Task Click Mode */}
+                        <div className="grid grid-cols-[120px_1fr] items-center gap-4">
+                            <label className="text-sm text-gray-600 dark:text-gray-400">일정 클릭 동작</label>
+                            <div className="flex bg-gray-100 dark:bg-gray-800 rounded p-1">
+                                {[
+                                    { val: 'single', label: '원클릭' },
+                                    { val: 'double', label: '더블클릭' }
+                                ].map((opt) => (
+                                    <button
+                                        key={opt.val}
+                                        onClick={() => handleChange('taskClickMode', opt.val)}
+                                        className={`flex-1 py-1 text-xs font-medium rounded transition-colors ${(settings.taskClickMode || 'single') === opt.val
+                                            ? 'bg-white dark:bg-gray-700 text-blue-600 shadow-sm'
+                                            : 'text-gray-500 hover:text-gray-700'
+                                            }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     </div>
 

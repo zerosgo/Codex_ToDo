@@ -83,6 +83,62 @@ export function CalendarView({
         setTimeout(() => setShowCopyToast(false), 2000);
     };
 
+    // Ctrl+Click URL paste helper: returns true if URL was pasted
+    const handleCtrlClickUrlPaste = async (task: Task): Promise<boolean> => {
+        try {
+            const clipboardText = await navigator.clipboard.readText();
+            const trimmed = clipboardText.trim();
+
+            // Check if clipboard contains a URL
+            if (!trimmed.match(/^https?:\/\//i)) {
+                return false; // Not a URL, proceed with normal click
+            }
+
+            const { updateTask } = await import('@/lib/storage');
+
+            // Get existing URLs (support both legacy resourceUrl and resourceUrls array)
+            const existingUrls = task.resourceUrls && task.resourceUrls.length > 0
+                ? task.resourceUrls
+                : (task.resourceUrl ? [task.resourceUrl] : []);
+
+            if (existingUrls.length > 0 && existingUrls[0].trim()) {
+                // Existing URL exists - ask user
+                const choice = window.confirm(
+                    `기존 자료 URL이 있습니다.\n\n기존: ${existingUrls.join(', ')}\n새로: ${trimmed}\n\n[확인] = 변경 (덮어쓰기)\n[취소] = 추가 (기존 URL 유지)`
+                );
+
+                if (choice) {
+                    // Replace - set new URL as the only URL
+                    updateTask(task.id, {
+                        resourceUrl: trimmed,
+                        resourceUrls: [trimmed]
+                    });
+                } else {
+                    // Append - add new URL to array
+                    const newUrls = [...existingUrls, trimmed];
+                    updateTask(task.id, {
+                        resourceUrl: existingUrls[0], // keep first URL as legacy
+                        resourceUrls: newUrls
+                    });
+                }
+            } else {
+                // No existing URL - just save
+                updateTask(task.id, {
+                    resourceUrl: trimmed,
+                    resourceUrls: [trimmed]
+                });
+            }
+
+            onDataChange?.();
+            setShowCopyToast(true);
+            setTimeout(() => setShowCopyToast(false), 2000);
+            return true;
+        } catch (err) {
+            console.error('클립보드 읽기 실패:', err);
+            return false;
+        }
+    };
+
     // Get Team Schedule Category ID
     const teamScheduleCategoryId = categories.find(c => c.name === '팀 일정')?.id || '';
 
@@ -886,10 +942,26 @@ export function CalendarView({
                                                                         borderRightColor: settings.showBorder ? boxBorderColor : 'transparent',
                                                                         borderBottomColor: settings.showBorder ? boxBorderColor : 'transparent',
                                                                     }}
-                                                                    onClick={(e) => {
+                                                                    onClick={async (e) => {
                                                                         e.stopPropagation();
-                                                                        setEditingScheduleTask(task);
-                                                                        setIsTeamScheduleModalOpen(true);
+                                                                        // Ctrl+Click: URL paste from clipboard
+                                                                        if (e.ctrlKey || e.metaKey) {
+                                                                            const handled = await handleCtrlClickUrlPaste(task);
+                                                                            if (handled) return;
+                                                                        }
+                                                                        // Single click mode (default)
+                                                                        if ((settings.taskClickMode || 'single') === 'single') {
+                                                                            setEditingScheduleTask(task);
+                                                                            setIsTeamScheduleModalOpen(true);
+                                                                        }
+                                                                    }}
+                                                                    onDoubleClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        // Double click mode
+                                                                        if ((settings.taskClickMode || 'single') === 'double') {
+                                                                            setEditingScheduleTask(task);
+                                                                            setIsTeamScheduleModalOpen(true);
+                                                                        }
                                                                     }}
                                                                     onDragOver={(e) => {
                                                                         e.preventDefault();
@@ -902,18 +974,23 @@ export function CalendarView({
                                                                         {task.dueTime ? <span className="mr-1 opacity-75 whitespace-nowrap">{task.dueTime.match(/(\d{2}:\d{2})/)?.[0] || task.dueTime}</span> : ''}
                                                                         <span className="truncate">{task.title}</span>
                                                                         <div className="ml-auto shrink-0 flex items-center gap-0.5">
-                                                                            {task.resourceUrl && (
-                                                                                <Paperclip
-                                                                                    className="w-3 h-3 text-gray-600 cursor-pointer hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                                                                            {/* Multiple clip icons for multiple URLs */}
+                                                                            {(task.resourceUrls && task.resourceUrls.length > 0 ? task.resourceUrls : (task.resourceUrl ? [task.resourceUrl] : [])).map((url, idx) => (
+                                                                                <button
+                                                                                    key={idx}
+                                                                                    className="p-0.5 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex-shrink-0"
                                                                                     onClick={(e) => {
                                                                                         e.stopPropagation();
-                                                                                        handleCopyUrl(task.resourceUrl!);
+                                                                                        handleCopyUrl(url);
                                                                                         if (!e.ctrlKey && !e.metaKey) {
-                                                                                            window.open(task.resourceUrl, '_blank');
+                                                                                            window.open(url, '_blank');
                                                                                         }
                                                                                     }}
-                                                                                />
-                                                                            )}
+                                                                                    title={url}
+                                                                                >
+                                                                                    <Paperclip className="w-3 h-3 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200" />
+                                                                                </button>
+                                                                            ))}
                                                                             {(settings.showExecutiveIndicator ?? true) && highlightLevel === 1 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[1] || 'gray', 'bg', 50) }} />}
                                                                             {(settings.showExecutiveIndicator ?? true) && highlightLevel === 2 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[2] || 'gray', 'bg', 50) }} />}
                                                                             {(settings.showExecutiveIndicator ?? true) && highlightLevel === 3 && <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getColorValue(settings.executiveColors?.[3] || 'gray', 'bg', 50) }} />}
@@ -999,13 +1076,33 @@ export function CalendarView({
                                                                     className={`group/task relative px-1.5 rounded cursor-grab active:cursor-grabbing transition-all w-full overflow-hidden flex items-center ${draggedTaskId === task.id ? 'opacity-50 scale-95' : ''
                                                                         } ${task.completed ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-gray-100 dark:!bg-gray-700'} ${completedClass}`}
                                                                     style={TaskStyle}
-                                                                    onClick={(e) => {
+                                                                    onClick={async (e) => {
                                                                         e.stopPropagation();
-                                                                        if (task.categoryId === teamScheduleCategoryId) {
-                                                                            setEditingScheduleTask(task);
-                                                                            setIsTeamScheduleModalOpen(true);
-                                                                        } else {
-                                                                            onTaskClick(task);
+                                                                        // Ctrl+Click: URL paste from clipboard
+                                                                        if (e.ctrlKey || e.metaKey) {
+                                                                            const handled = await handleCtrlClickUrlPaste(task);
+                                                                            if (handled) return;
+                                                                        }
+                                                                        // Single click mode (default)
+                                                                        if ((settings.taskClickMode || 'single') === 'single') {
+                                                                            if (task.categoryId === teamScheduleCategoryId) {
+                                                                                setEditingScheduleTask(task);
+                                                                                setIsTeamScheduleModalOpen(true);
+                                                                            } else {
+                                                                                onTaskClick(task);
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                    onDoubleClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        // Double click mode
+                                                                        if ((settings.taskClickMode || 'single') === 'double') {
+                                                                            if (task.categoryId === teamScheduleCategoryId) {
+                                                                                setEditingScheduleTask(task);
+                                                                                setIsTeamScheduleModalOpen(true);
+                                                                            } else {
+                                                                                onTaskClick(task);
+                                                                            }
                                                                         }
                                                                     }}
                                                                     title={`${task.title}${task.dueTime ? ` (${task.dueTime})` : ''}${hasChecklist ? ` (${completedSubtasks}/${totalSubtasks})` : ''}`}
@@ -1040,21 +1137,25 @@ export function CalendarView({
                                                                             )}
                                                                             <span className="truncate">{task.title}</span>
                                                                         </div>
-                                                                        {task.resourceUrl && (
-                                                                            <button
-                                                                                className="ml-1 p-1 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 flex-shrink-0"
-                                                                                onClick={(e) => {
-                                                                                    e.stopPropagation();
-                                                                                    handleCopyUrl(task.resourceUrl!);
-                                                                                    if (!e.ctrlKey && !e.metaKey) {
-                                                                                        window.open(task.resourceUrl, '_blank');
-                                                                                    }
-                                                                                }}
-                                                                                title="자료 열기"
-                                                                            >
-                                                                                <Paperclip className="w-3 h-3 text-gray-600 dark:text-gray-400" />
-                                                                            </button>
-                                                                        )}
+                                                                        {/* Multiple clip icons for multiple URLs - wrapped with gap for consistent spacing */}
+                                                                        <div className="flex items-center gap-0.5 shrink-0">
+                                                                            {(task.resourceUrls && task.resourceUrls.length > 0 ? task.resourceUrls : (task.resourceUrl ? [task.resourceUrl] : [])).map((url, idx) => (
+                                                                                <button
+                                                                                    key={idx}
+                                                                                    className="p-0.5 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 flex-shrink-0"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleCopyUrl(url);
+                                                                                        if (!e.ctrlKey && !e.metaKey) {
+                                                                                            window.open(url, '_blank');
+                                                                                        }
+                                                                                    }}
+                                                                                    title={url}
+                                                                                >
+                                                                                    <Paperclip className="w-3 h-3 text-gray-600 dark:text-gray-400" />
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
                                                                     </div>
                                                                 </div>
                                                             );
