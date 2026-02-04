@@ -28,7 +28,7 @@ interface SearchCommandDialogProps {
 }
 
 type SearchResultType = 'task' | 'team-schedule' | 'note' | 'link';
-type MatchSource = 'title' | 'assignee' | 'tag' | 'note' | 'url';
+type MatchSource = 'title' | 'assignee' | 'organizer' | 'tag' | 'note' | 'url';
 
 interface SearchResult {
     id: string;
@@ -53,8 +53,94 @@ export function SearchCommandDialog({
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [showCopyToast, setShowCopyToast] = useState(false);
     const [isRecentMonthOnly, setIsRecentMonthOnly] = useState(true);
+    const [recentSearches, setRecentSearches] = useState<string[]>([]);
     const inputRef = useRef<HTMLInputElement>(null);
     const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+    // Natural language date filter patterns
+    const parseNaturalLanguageFilter = (q: string): { keyword: string; dateFilter?: { start: Date; end: Date } } => {
+        const today = new Date();
+        const patterns: { regex: RegExp; getRange: () => { start: Date; end: Date } }[] = [
+            {
+                regex: /^지난\s*주\s*/,
+                getRange: () => ({
+                    start: startOfDay(subDays(today, 7 + today.getDay())),
+                    end: endOfDay(subDays(today, today.getDay() + 1))
+                })
+            },
+            {
+                regex: /^이번\s*주\s*/,
+                getRange: () => ({
+                    start: startOfDay(subDays(today, today.getDay())),
+                    end: endOfDay(addDays(today, 6 - today.getDay()))
+                })
+            },
+            {
+                regex: /^다음\s*주\s*/,
+                getRange: () => ({
+                    start: startOfDay(addDays(today, 7 - today.getDay())),
+                    end: endOfDay(addDays(today, 13 - today.getDay()))
+                })
+            },
+            {
+                regex: /^오늘\s*/,
+                getRange: () => ({
+                    start: startOfDay(today),
+                    end: endOfDay(today)
+                })
+            },
+            {
+                regex: /^내일\s*/,
+                getRange: () => ({
+                    start: startOfDay(addDays(today, 1)),
+                    end: endOfDay(addDays(today, 1))
+                })
+            },
+            {
+                regex: /^이번\s*달\s*/,
+                getRange: () => ({
+                    start: startOfDay(new Date(today.getFullYear(), today.getMonth(), 1)),
+                    end: endOfDay(new Date(today.getFullYear(), today.getMonth() + 1, 0))
+                })
+            },
+            {
+                regex: /^지난\s*달\s*/,
+                getRange: () => ({
+                    start: startOfDay(new Date(today.getFullYear(), today.getMonth() - 1, 1)),
+                    end: endOfDay(new Date(today.getFullYear(), today.getMonth(), 0))
+                })
+            }
+        ];
+
+        for (const { regex, getRange } of patterns) {
+            if (regex.test(q)) {
+                return {
+                    keyword: q.replace(regex, '').trim(),
+                    dateFilter: getRange()
+                };
+            }
+        }
+
+        return { keyword: q };
+    };
+
+    // Load recent searches from localStorage
+    useEffect(() => {
+        const saved = localStorage.getItem('search-history');
+        if (saved) {
+            try {
+                setRecentSearches(JSON.parse(saved));
+            } catch { }
+        }
+    }, []);
+
+    // Save search to history
+    const saveToHistory = (searchQuery: string) => {
+        if (!searchQuery.trim()) return;
+        const updated = [searchQuery, ...recentSearches.filter(s => s !== searchQuery)].slice(0, 10);
+        setRecentSearches(updated);
+        localStorage.setItem('search-history', JSON.stringify(updated));
+    };
 
     // Reset state when opened
     useEffect(() => {
@@ -117,7 +203,9 @@ export function SearchCommandDialog({
             return;
         }
 
-        const q = query.toLowerCase();
+        // Parse natural language filter
+        const { keyword, dateFilter } = parseNaturalLanguageFilter(query);
+        const q = keyword.toLowerCase();
         const allTasks = getTasks();
         const allQuickLinks = getQuickLinks();
         const allNotes = getNotes();
@@ -128,14 +216,15 @@ export function SearchCommandDialog({
 
         const searchResults: SearchResult[] = [];
 
-        // Date Range for Recent Month Filter
+        // Date Range for Recent Month Filter (default or natural language)
         const today = new Date();
-        const startDate = startOfDay(subDays(today, 20));
-        const endDate = endOfDay(addDays(today, 10));
+        const startDate = dateFilter ? dateFilter.start : startOfDay(subDays(today, 20));
+        const endDate = dateFilter ? dateFilter.end : endOfDay(addDays(today, 10));
 
         // 1. Tasks & Team Schedule
         allTasks.forEach(task => {
-            if (isRecentMonthOnly) {
+            // Apply date filter (always if natural language, or when checkbox is on)
+            if (dateFilter || isRecentMonthOnly) {
                 if (!task.dueDate) return;
                 const taskDate = new Date(task.dueDate);
                 if (!isWithinInterval(taskDate, { start: startDate, end: endDate })) return;
@@ -155,6 +244,9 @@ export function SearchCommandDialog({
             } else if (task.assignee?.toLowerCase().includes(q)) {
                 matchSource = 'assignee';
                 matchPreview = task.assignee;
+            } else if (task.organizer?.toLowerCase().includes(q)) {
+                matchSource = 'organizer';
+                matchPreview = task.organizer;
             } else if (task.tags?.some(t => t.toLowerCase().includes(q))) {
                 matchSource = 'tag';
                 matchPreview = task.tags.find(t => t.toLowerCase().includes(q)) || '';
@@ -184,6 +276,13 @@ export function SearchCommandDialog({
                         <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
                             <User className="w-3 h-3" />
                             <span>담당자: {highlightText(matchPreview, q)}</span>
+                        </div>
+                    );
+                } else if (matchSource === 'organizer') {
+                    subtitleNode = (
+                        <div className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                            <User className="w-3 h-3" />
+                            <span>주관: {highlightText(matchPreview, q)}</span>
                         </div>
                     );
                 } else if (matchSource === 'tag') {
@@ -297,6 +396,11 @@ export function SearchCommandDialog({
     }, [isOpen, results, selectedIndex]);
 
     const handleSelect = (result: SearchResult, shouldClose: boolean = false) => {
+        // Save to history
+        if (query.trim()) {
+            saveToHistory(query.trim());
+        }
+
         if (result.type === 'task' || result.type === 'team-schedule') {
             onSelectTask(result.data as Task);
         } else if (result.type === 'note') {
@@ -362,10 +466,40 @@ export function SearchCommandDialog({
                 {/* Results Area */}
                 <div className="max-h-[60vh] overflow-y-auto">
                     {query.trim() === '' ? (
-                        <div className="text-center py-12 text-gray-400 dark:text-gray-600">
-                            <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
-                            <p>검색어를 입력하세요</p>
-                        </div>
+                        recentSearches.length > 0 ? (
+                            <div className="p-4">
+                                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3 flex items-center justify-between">
+                                    <span>최근 검색</span>
+                                    <button
+                                        onClick={() => {
+                                            setRecentSearches([]);
+                                            localStorage.removeItem('search-history');
+                                        }}
+                                        className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                                    >
+                                        지우기
+                                    </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    {recentSearches.map((search, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => setQuery(search)}
+                                            className="px-3 py-1.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full text-sm text-gray-700 dark:text-gray-300 transition-colors flex items-center gap-1.5"
+                                        >
+                                            <Search className="w-3 h-3 text-gray-400" />
+                                            {search}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-12 text-gray-400 dark:text-gray-600">
+                                <Search className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                                <p>검색어를 입력하세요</p>
+                                <p className="text-sm mt-2 opacity-70">팁: "지난주 회의", "이번 달 완료" 등으로 검색해보세요</p>
+                            </div>
+                        )
                     ) : results.length === 0 ? (
                         <div className="text-center py-12 text-gray-400 dark:text-gray-600">
                             <p>검색 결과가 없습니다</p>

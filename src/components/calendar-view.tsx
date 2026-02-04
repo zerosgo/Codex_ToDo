@@ -72,7 +72,7 @@ export function CalendarView({
     const [isTeamScheduleModalOpen, setIsTeamScheduleModalOpen] = useState(false);
     const [teamScheduleModalDate, setTeamScheduleModalDate] = useState<Date | undefined>(undefined);
     const [editingScheduleTask, setEditingScheduleTask] = useState<Task | null>(null);
-    const [showOnlyTeamSchedule, setShowOnlyTeamSchedule] = useState(false);
+    const [showOnlyTeamSchedule, setShowOnlyTeamSchedule] = useState(true);
     const [showOnlyExecutive, setShowOnlyExecutive] = useState(false);
     const [showCopyToast, setShowCopyToast] = useState(false);
     const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -185,11 +185,28 @@ export function CalendarView({
                 e.preventDefault();
                 setIsSearchModalOpen(true);
             }
+
+            // Month navigation shortcuts: Ctrl + ArrowLeft/ArrowRight
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    onMonthChange(subMonths(currentMonth, 1));
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    onMonthChange(addMonths(currentMonth, 1));
+                }
+            }
+
+            // Ctrl+M: Toggle team schedule view (standalone check)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'm') {
+                e.preventDefault();
+                setShowOnlyTeamSchedule(prev => !prev);
+            }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [currentMonth, onMonthChange]); // Re-run effect if currentMonth or onMonthChange changes
 
     // Calculate actual height in pixels (base: 18px at 35%)
     const itemHeight = Math.round(18 * (settings.itemHeightPercent / 35));
@@ -642,18 +659,26 @@ export function CalendarView({
                                 : 'grid-cols-[32px_repeat(6,minmax(0,1fr))]'}`}
                         >
                             {/* Week Number Cell with Collapse Checkbox */}
-                            <div className={`border-b border-r border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900/50 ${isCollapsed ? 'h-8' : 'pt-1 gap-0.5'}`}>
-                                <span className="text-xs font-medium text-gray-400 dark:text-gray-600">
-                                    W{weekNum.toString().padStart(2, '0')}
-                                </span>
-                                <input
-                                    type="checkbox"
-                                    checked={isCollapsed}
-                                    onChange={() => toggleWeekCollapse(weekNum)}
-                                    className="w-3 h-3 cursor-pointer accent-gray-500"
-                                    title="주차 접기/펼치기"
-                                />
-                            </div>
+                            {(() => {
+                                const today = new Date();
+                                const todayWeekNum = getWeekNumber(today);
+                                const isCurrentWeek = weekNum === todayWeekNum && isSameMonth(firstDayOfWeek, today);
+
+                                return (
+                                    <div className={`border-b border-r border-gray-200 dark:border-gray-700 flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900/50 ${isCollapsed ? 'h-8' : 'pt-1 gap-0.5'}`}>
+                                        <span className={`text-xs ${isCurrentWeek ? 'font-bold text-gray-700 dark:text-gray-200' : 'font-medium text-gray-400 dark:text-gray-600'}`}>
+                                            W{weekNum.toString().padStart(2, '0')}
+                                        </span>
+                                        <input
+                                            type="checkbox"
+                                            checked={isCollapsed}
+                                            onChange={() => toggleWeekCollapse(weekNum)}
+                                            className="w-3 h-3 cursor-pointer accent-gray-500"
+                                            title="주차 접기/펼치기"
+                                        />
+                                    </div>
+                                );
+                            })()}
 
                             {/* Day Cells */}
                             {weekDays.map((day) => {

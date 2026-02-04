@@ -84,6 +84,60 @@ function AnimatedTaskItem({
         setTimeout(() => setShowCopyToast(false), 2000);
     };
 
+    // Ctrl+Click URL paste helper: returns true if URL was pasted
+    const handleCtrlClickUrlPaste = async (): Promise<boolean> => {
+        try {
+            const clipboardText = await navigator.clipboard.readText();
+            const trimmed = clipboardText.trim();
+
+            // Check if clipboard contains a URL
+            if (!trimmed.match(/^https?:\/\//i)) {
+                return false; // Not a URL, proceed with normal click
+            }
+
+            // Get existing URLs (support both legacy resourceUrl and resourceUrls array)
+            const existingUrls = task.resourceUrls && task.resourceUrls.length > 0
+                ? task.resourceUrls
+                : (task.resourceUrl ? [task.resourceUrl] : []);
+
+            if (existingUrls.length > 0 && existingUrls[0].trim()) {
+                // Existing URL exists - ask user
+                const choice = window.confirm(
+                    `기존 자료 URL이 있습니다.\n\n기존: ${existingUrls.join(', ')}\n새로: ${trimmed}\n\n[확인] = 변경 (덮어쓰기)\n[취소] = 추가 (기존 URL 유지)`
+                );
+
+                if (choice) {
+                    // Replace - set new URL as the only URL
+                    updateTask(task.id, {
+                        resourceUrl: trimmed,
+                        resourceUrls: [trimmed]
+                    });
+                } else {
+                    // Append - add new URL to array
+                    const newUrls = [...existingUrls, trimmed];
+                    updateTask(task.id, {
+                        resourceUrl: existingUrls[0], // keep first URL as legacy
+                        resourceUrls: newUrls
+                    });
+                }
+            } else {
+                // No existing URL - just save
+                updateTask(task.id, {
+                    resourceUrl: trimmed,
+                    resourceUrls: [trimmed]
+                });
+            }
+
+            onTaskChange();
+            setShowCopyToast(true);
+            setTimeout(() => setShowCopyToast(false), 2000);
+            return true;
+        } catch (err) {
+            console.error('클립보드 읽기 실패:', err);
+            return false;
+        }
+    };
+
     // Helper function to darken a hex color
     const darkenColor = (hex: string, amount: number = 0.3): string => {
         // Remove # if present
@@ -235,7 +289,13 @@ function AnimatedTaskItem({
                         onOpenDetail(task);
                     }
                 }}
-                onClick={() => {
+                onClick={async (e) => {
+                    // Ctrl+Click: paste URL from clipboard
+                    if (e.ctrlKey || e.metaKey) {
+                        const handled = await handleCtrlClickUrlPaste();
+                        if (handled) return; // URL was pasted, don't open detail
+                    }
+
                     if ((taskClickMode || 'single') === 'single') {
                         onOpenDetail(task);
                     } else {
@@ -261,11 +321,13 @@ function AnimatedTaskItem({
                 </div>
 
                 {/* Checkbox */}
-                <Checkbox
-                    checked={task.completed}
-                    onCheckedChange={handleToggle}
-                    className="mt-0.5 h-5 w-5 rounded-full border-2 data-[state=checked]:!bg-gray-400 data-[state=checked]:!border-gray-400"
-                />
+                <div onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                        checked={task.completed}
+                        onCheckedChange={handleToggle}
+                        className="mt-0.5 h-5 w-5 rounded-full border-2 data-[state=checked]:!bg-gray-400 data-[state=checked]:!border-gray-400"
+                    />
+                </div>
 
                 {/* Content */}
                 <div className="flex-1 min-w-0">
