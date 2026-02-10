@@ -100,3 +100,40 @@ export const NOTE_COLORS = [
     { name: '청록', value: '#cbf0f8' },
     { name: '초록', value: '#ccff90' },
 ];
+
+// Team Member for HR management
+export interface TeamMember {
+    id: string;
+    knoxId: string;           // Knox_ID
+    name: string;             // 이름
+    employeeId: string;       // 사번
+    department: string;       // 소속
+    process: string;          // 공정
+    part: string;             // 파트
+    position: string;         // 직급
+    positionYear: number;     // 직급연차
+    birthYear: number;        // 출생년도
+    workLocation: string;     // 근무지
+    status: string;           // 상태 (재직/휴직/퇴직)
+    customFields: Record<string, string>; // 추가 컬럼 자동 수용
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface BusinessTrip {
+    id: string; // unique id (uuid)
+    knoxId?: string; // Link to TeamMember if matched
+    name: string; // Parsed name
+    startDate: string; // ISO Date YYYY-MM-DD
+    endDate: string; // ISO Date YYYY-MM-DD
+    location: string;
+    purpose: string; // e.g. "해외출장(생산법인)"
+    status: 'planned' | 'active' | 'completed';
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface TripParseResult {
+    trips: BusinessTrip[];
+    unknownNames: string[]; // Names that couldn't be auto-matched to a single member
+}

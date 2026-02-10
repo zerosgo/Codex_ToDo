@@ -591,3 +591,87 @@ export function deleteLabel(id: string): boolean {
     saveLabels(labels);
     return true;
 }
+
+// Team Members storage
+const TEAM_MEMBERS_KEY = 'local-tasks-team-members';
+
+import { TeamMember } from './types';
+
+export function getTeamMembers(): TeamMember[] {
+    if (typeof window === 'undefined') return [];
+    const data = localStorage.getItem(TEAM_MEMBERS_KEY);
+    if (!data) return [];
+    return JSON.parse(data).sort((a: TeamMember, b: TeamMember) => a.name.localeCompare(b.name, 'ko'));
+}
+
+export function saveTeamMembers(members: TeamMember[]): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(TEAM_MEMBERS_KEY, JSON.stringify(members));
+}
+
+export function addTeamMember(member: Omit<TeamMember, 'id' | 'createdAt' | 'updatedAt'>): TeamMember {
+    const members = getTeamMembers();
+    const now = new Date().toISOString();
+    const newMember: TeamMember = {
+        ...member,
+        id: member.knoxId || member.employeeId || generateId(),
+        createdAt: now,
+        updatedAt: now,
+    };
+    members.push(newMember);
+    saveTeamMembers(members);
+    return newMember;
+}
+
+export function updateTeamMember(id: string, updates: Partial<TeamMember>): TeamMember | null {
+    const members = getTeamMembers();
+    const index = members.findIndex(m => m.id === id);
+    if (index === -1) return null;
+    members[index] = { ...members[index], ...updates, updatedAt: new Date().toISOString() };
+    saveTeamMembers(members);
+    return members[index];
+}
+
+export function deleteTeamMember(id: string): boolean {
+    const members = getTeamMembers();
+    const index = members.findIndex(m => m.id === id);
+    if (index === -1) return false;
+    members.splice(index, 1);
+    saveTeamMembers(members);
+    return true;
+
+}
+
+// Business Trip Storage
+const TRIP_STORAGE_KEY = 'business-trips';
+
+export function getBusinessTrips(): import('./types').BusinessTrip[] {
+    if (typeof window === 'undefined') return [];
+    const stored = localStorage.getItem(TRIP_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+}
+
+export function saveBusinessTrips(trips: import('./types').BusinessTrip[]) {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(TRIP_STORAGE_KEY, JSON.stringify(trips));
+}
+
+export function addBusinessTrip(trip: Omit<import('./types').BusinessTrip, 'id' | 'createdAt' | 'updatedAt'>) {
+    const trips = getBusinessTrips();
+    const now = new Date().toISOString();
+    const newTrip: import('./types').BusinessTrip = {
+        ...trip,
+        id: generateId(), // Using existing generateId
+        createdAt: now,
+        updatedAt: now,
+    };
+    trips.push(newTrip);
+    saveBusinessTrips(trips);
+    return newTrip;
+}
+
+export function deleteBusinessTrip(id: string) {
+    const trips = getBusinessTrips();
+    const filtered = trips.filter(t => t.id !== id);
+    saveBusinessTrips(filtered);
+}

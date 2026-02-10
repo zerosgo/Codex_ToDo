@@ -14,6 +14,8 @@ import { ImportExportDialog } from '@/components/import-export-dialog';
 import { ScheduleImportDialog } from '@/components/schedule-import-dialog';
 import { TeamScheduleAddModal } from '@/components/team-schedule-add-modal';
 import { SearchCommandDialog } from '@/components/search-command-dialog';
+import { TeamMemberBoard } from '@/components/team-member-board';
+import { TripBoard } from '@/components/trip-board';
 
 import { ParsedSchedule, parseScheduleText } from '@/lib/schedule-parser';
 import { Button } from '@/components/ui/button';
@@ -36,7 +38,7 @@ export default function Home() {
   const [theme, setThemeState] = useState<Theme>('light');
   const [layout, setLayoutState] = useState<Layout>(1);
   const [showWeekends, setShowWeekends] = useState(true);
-  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites' | 'team' | 'trip'>('calendar');
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [notesVersion, setNotesVersion] = useState(0);
   const [isTeamScheduleModalOpen, setIsTeamScheduleModalOpen] = useState(false);
@@ -44,6 +46,7 @@ export default function Home() {
   const [collectionGroups, setCollectionGroups] = useState<string[]>(['CP', 'OLB', 'LASER', '라미1', '라미2']);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewModeRef = useRef(viewMode);
 
   // Load categories from LocalStorage
   const loadCategories = useCallback(() => {
@@ -134,17 +137,12 @@ export default function Home() {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         setViewMode(prev => {
+          const views: ('calendar' | 'keep' | 'favorites' | 'team' | 'trip')[] = ['calendar', 'favorites', 'keep', 'team', 'trip'];
+          const currentIdx = views.indexOf(prev);
           if (e.key === 'ArrowRight') {
-            // Calendar -> Favorites -> Keep -> Calendar
-            if (prev === 'calendar') return 'favorites';
-            if (prev === 'favorites') return 'keep';
-            return 'calendar';
+            return views[(currentIdx + 1) % views.length];
           } else {
-            // ArrowLeft (Reverse)
-            // Calendar <- Favorites <- Keep <- Calendar
-            if (prev === 'calendar') return 'keep';
-            if (prev === 'keep') return 'favorites';
-            return 'calendar';
+            return views[(currentIdx - 1 + views.length) % views.length];
           }
         });
       }
@@ -187,10 +185,37 @@ export default function Home() {
         e.preventDefault();
         setIsSearchOpen(prev => !prev);
       }
+
+      // Clipboard Import: Ctrl + Shift + V - Import team schedule directly from clipboard
+      // (only when NOT in team/trip view - they have their own handlers)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'V' && viewModeRef.current !== 'team' && viewModeRef.current !== 'trip') {
+        e.preventDefault();
+        // Read from clipboard and import
+        navigator.clipboard.readText().then(clipboardText => {
+          if (!clipboardText.trim()) {
+            alert('클립보드가 비어있습니다.');
+            return;
+          }
+          const result = parseScheduleText(clipboardText, currentMonth.getFullYear(), currentMonth.getMonth());
+          if (result.length === 0) {
+            alert('감지된 일정이 없습니다. 텍스트 형식을 확인해주세요.');
+            return;
+          }
+          handleScheduleImport(result);
+        }).catch(err => {
+          console.error('클립보드 읽기 실패:', err);
+          alert('클립보드를 읽을 수 없습니다. 브라우저 권한을 확인해주세요.');
+        });
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [layout, taskListWidth, isSidebarVisible, showWeekends]);
+
+  // Keep viewModeRef in sync
+  useEffect(() => {
+    viewModeRef.current = viewMode;
+  }, [viewMode]);
 
   // Load layout state from localStorage on mount
   useEffect(() => {
@@ -624,6 +649,8 @@ export default function Home() {
                     setCurrentMonth(date);
                   }}
                   onImportSchedule={() => setIsScheduleImportOpen(true)}
+                  onTeamViewClick={() => setViewMode('team')}
+                  onTripViewClick={() => setViewMode('trip')}
                   onPinnedMemoClick={(noteId) => {
                     setViewMode('keep');
                     if (noteId) {
@@ -716,11 +743,29 @@ export default function Home() {
                   setIsTeamScheduleModalOpen(true);
                 }}
               />
+            ) : viewMode === 'team' ? (
+              <TeamMemberBoard
+                onDataChange={handleTasksChange}
+              />
+            ) : viewMode === 'trip' ? (
+              <TripBoard
+                onDataChange={handleTasksChange}
+              />
             ) : null}
           </div>
         );
 
         // Render based on layout
+        // For 'team' or 'trip' views, we hide the task list to give full width to the board
+        if (viewMode === 'team' || viewMode === 'trip') {
+          // Respect Layout 3 (Sidebar on Right)
+          if (layout === 3) {
+            return <>{mainPanel}{sidebarPanel}</>;
+          }
+          return <>{sidebarPanel}{mainPanel}</>;
+        }
+
+        // Standard Layouts
         // Layout 1: Sidebar | TaskList | ResizeHandle | Calendar (Default)
         // Layout 2: Sidebar | Calendar | ResizeHandle | TaskList
         // Layout 3: Calendar | ResizeHandle | TaskList | Sidebar

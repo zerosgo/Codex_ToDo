@@ -37,6 +37,8 @@ import {
     GripVertical,
     Pin,
     Star,
+    Users,
+    Plane,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -54,6 +56,8 @@ interface SidebarProps {
     onMonthChange: (date: Date) => void;
     onDateSelect: (date: Date) => void;
     onPinnedMemoClick?: (noteId: string) => void;
+    onTeamViewClick?: () => void;
+    onTripViewClick?: () => void;
     notesVersion?: number;
 }
 
@@ -71,6 +75,8 @@ export function Sidebar({
     onMonthChange,
     onDateSelect,
     onPinnedMemoClick,
+    onTeamViewClick,
+    onTripViewClick,
     notesVersion,
 }: SidebarProps) {
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
@@ -643,6 +649,24 @@ export function Sidebar({
                         onClick={onImportSchedule}
                     >
                         팀 일정 가져오기
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs w-full mt-1 border-purple-200 hover:bg-purple-50 text-purple-700"
+                        onClick={onTeamViewClick}
+                    >
+                        <Users className="w-3.5 h-3.5 mr-1" />
+                        팀원 관리
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs w-full mt-1 border-blue-200 hover:bg-blue-50 text-blue-700"
+                        onClick={onTripViewClick}
+                    >
+                        <Plane className="w-3.5 h-3.5 mr-1" />
+                        출장 관리
                     </Button>
                 </div>
             </div >
