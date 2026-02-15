@@ -34,3 +34,4 @@ next-env.d.ts
 
 # User requested exclusions
 /local-tasks*.zip
+*.zip

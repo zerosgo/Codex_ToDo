@@ -703,7 +703,7 @@ export default function Home() {
         );
 
         const mainPanel = (
-          <div key="main-view" className="flex-1 overflow-hidden">
+          <div key="main-view" className="flex-1 overflow-hidden flex flex-col relative">
             {viewMode === 'calendar' ? (
               <CalendarView
                 tasks={tasks}

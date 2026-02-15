@@ -675,3 +675,60 @@ export function deleteBusinessTrip(id: string) {
     const filtered = trips.filter(t => t.id !== id);
     saveBusinessTrips(filtered);
 }
+
+// Trip Record Storage (Manual DB)
+const TRIP_RECORD_STORAGE_KEY = 'trip-records';
+
+export function getTripRecords(): import('./types').TripRecord[] {
+    if (typeof window === 'undefined') return [];
+    const stored = localStorage.getItem(TRIP_RECORD_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+}
+
+export function saveTripRecords(records: import('./types').TripRecord[]) {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(TRIP_RECORD_STORAGE_KEY, JSON.stringify(records));
+}
+
+export function addTripRecord(record: Omit<import('./types').TripRecord, 'id' | 'createdAt' | 'updatedAt'>) {
+    const records = getTripRecords();
+    const now = new Date().toISOString();
+    const newRecord: import('./types').TripRecord = {
+        ...record,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+    };
+    records.push(newRecord);
+    saveTripRecords(records);
+    return newRecord;
+}
+
+export function deleteTripRecord(id: string) {
+    const records = getTripRecords();
+    const filtered = records.filter(r => r.id !== id);
+    saveTripRecords(filtered);
+}
+
+// Name Resolution Storage (Name -> KnoxID)
+const NAME_RESOLUTION_KEY = 'trip-name-resolution';
+
+export function getNameResolutions(): Record<string, string> {
+    if (typeof window === 'undefined') return {};
+    const stored = localStorage.getItem(NAME_RESOLUTION_KEY);
+    return stored ? JSON.parse(stored) : {};
+}
+
+export function saveNameResolution(name: string, knoxId: string) {
+    const resolutions = getNameResolutions();
+    resolutions[name] = knoxId;
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(NAME_RESOLUTION_KEY, JSON.stringify(resolutions));
+}
+
+export function removeNameResolution(name: string) {
+    const resolutions = getNameResolutions();
+    delete resolutions[name];
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(NAME_RESOLUTION_KEY, JSON.stringify(resolutions));
+}

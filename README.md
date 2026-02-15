@@ -15,7 +15,7 @@
 터미널(명령 프롬프트 또는 PowerShell)을 열고, 프로젝트를 저장할 폴더로 이동한 뒤 아래 명령어를 입력합니다.
 
 ```bash
-git clone https://github.com/zeros79ya/ToDo.git
+git clone https://github.com/zerosgo/ToDo.git
 cd ToDo
 ```
 
