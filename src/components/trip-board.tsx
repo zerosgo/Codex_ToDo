@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BusinessTrip, TeamMember, TripCategory } from '@/lib/types';
 import { getBusinessTrips, saveBusinessTrips, deleteBusinessTrip, getTeamMembers, addTripRecord, getTripRecords, deleteTripRecord, getNameResolutions } from '@/lib/storage';
 import { TripRecord } from '@/lib/types';
@@ -8,6 +8,8 @@ import { parseTripText } from '@/lib/trip-parser';
 import { TripRecordBoard } from './trip-record-board';
 import { parseTripRecordText } from '@/lib/trip-record-parser';
 import { TripNameResolverDialog } from './trip-name-resolver-dialog';
+import { resolveDestination, buildDisplayLabel, getDestinationMappings, DestinationMatch } from '@/lib/trip-destination-resolver';
+import { TripDestinationPickerDialog, DestinationConflict } from './trip-destination-picker-dialog';
 import {
     Search,
     Plane,
@@ -52,6 +54,15 @@ const DEFAULT_CATEGORY_COLORS: Record<TripCategory, { bg: string; text: string; 
 };
 
 export function TripBoard({ onDataChange }: TripBoardProps) {
+    // Load saved Gantt preferences from localStorage
+    const savedPrefs = useMemo(() => {
+        if (typeof window === 'undefined') return null;
+        try {
+            const raw = localStorage.getItem('ganttViewPrefs');
+            return raw ? JSON.parse(raw) : null;
+        } catch { return null; }
+    }, []);
+
     const [trips, setTrips] = useState<BusinessTrip[]>([]);
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -66,27 +77,26 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         return 'gantt';
     });
     const [ganttStartDate, setGanttStartDate] = useState(() => {
+        if (savedPrefs?.ganttStartDate) return savedPrefs.ganttStartDate;
         const d = new Date();
         d.setDate(d.getDate() - 7);
-        return d.toISOString().split('T')[0];
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
     const [ganttEndDate, setGanttEndDate] = useState(() => {
+        if (savedPrefs?.ganttEndDate) return savedPrefs.ganttEndDate;
         const d = new Date();
         d.setDate(d.getDate() + 35);
-        return d.toISOString().split('T')[0];
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     });
-    const [categoryFilters, setCategoryFilters] = useState<Record<TripCategory, boolean>>({
-        trip: true,
-        vacation: true,
-        education: true,
-        others: true,
-    });
-    const [ganttGroupFilter, setGanttGroupFilter] = useState<string>('all');
-    const [ganttPartFilter, setGanttPartFilter] = useState<string>('all');
-    const [ganttDeptFilter, setGanttDeptFilter] = useState<string>('all');
-    const [activeTab, setActiveTab] = useState<'attendance' | 'manual'>('attendance');
+    const [categoryFilters, setCategoryFilters] = useState<Record<TripCategory, boolean>>(
+        savedPrefs?.categoryFilters ?? { trip: true, vacation: true, education: true, others: true }
+    );
+    const [ganttGroupFilter, setGanttGroupFilter] = useState<string>(savedPrefs?.ganttGroupFilter ?? 'all');
+    const [ganttPartFilter, setGanttPartFilter] = useState<string>(savedPrefs?.ganttPartFilter ?? 'all');
+    const [ganttDeptFilter, setGanttDeptFilter] = useState<string>(savedPrefs?.ganttDeptFilter ?? 'all');
+    const [activeTab, setActiveTab] = useState<'attendance' | 'manual'>(savedPrefs?.activeTab ?? 'attendance');
     const [manualDataVersion, setManualDataVersion] = useState(0);
-    const [barOpacity, setBarOpacity] = useState(0.8);
+    const [barOpacity, setBarOpacity] = useState(savedPrefs?.barOpacity ?? 0.8);
     const [showSettings, setShowSettings] = useState(false);
 
     // Custom Category Colors
@@ -124,14 +134,20 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
     const [conflicts, setConflicts] = useState<{ name: string; candidates: TeamMember[] }[]>([]);
     const [showResolver, setShowResolver] = useState(false);
 
+    // Destination Mapping (attendance trip → manual DB record)
+    const [destinationMappings, setDestinationMappings] = useState<Record<string, string>>({});
+    const [destinationConflicts, setDestinationConflicts] = useState<DestinationConflict[]>([]);
+    const [showDestinationPicker, setShowDestinationPicker] = useState(false);
+
     useEffect(() => {
         setTrips(getBusinessTrips());
         setMembers(getTeamMembers());
         setTripRecords(getTripRecords());
         setNameResolutions(getNameResolutions());
+        setDestinationMappings(getDestinationMappings());
     }, [manualDataVersion]); // Reload when manual data changes
 
-    // Conflict Detection
+    // Conflict Detection (for team member matching)
     useEffect(() => {
         if (tripRecords.length === 0 || members.length === 0) return;
 
@@ -139,11 +155,10 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         const processedNames = new Set<string>();
 
         tripRecords.forEach(record => {
-            if (record.knoxId) return; // Already linked
-            if (nameResolutions[record.name]) return; // Already resolved
-            if (processedNames.has(record.name)) return; // Already checked this name
+            if (record.knoxId) return;
+            if (nameResolutions[record.name]) return;
+            if (processedNames.has(record.name)) return;
 
-            // Find candidates by name
             const candidates = members.filter(m => m.name === record.name);
             if (candidates.length > 1) {
                 newConflicts.push({ name: record.name, candidates });
@@ -154,43 +169,42 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         setConflicts(newConflicts);
     }, [tripRecords, members, nameResolutions]);
 
-    // Enhanced Trips (Merge Attendance + Manual Record)
-    const enhancedTrips = trips.map(t => {
-        // Find matching TripRecord
-        // Match condition: KnoxID matches AND Dates overlap
-        const match = tripRecords.find(r => {
-            // Determine KnoxID of record
-            const recordKnoxId = r.knoxId || nameResolutions[r.name];
-            if (!recordKnoxId) {
-                // Try auto-match if unique name
-                const candidates = members.filter(m => m.name === r.name);
-                if (candidates.length === 1 && candidates[0].knoxId === t.knoxId) return true;
-                return false;
+    // Destination Resolution: match attendance trips → manual DB destinations
+    const { destinationMap, pendingDestConflicts } = useMemo(() => {
+        const destMap = new Map<string, DestinationMatch>();
+        const pendingConflicts: DestinationConflict[] = [];
+
+        if (tripRecords.length === 0) return { destinationMap: destMap, pendingDestConflicts: pendingConflicts };
+
+        trips.forEach(trip => {
+            const result = resolveDestination(trip, tripRecords, destinationMappings);
+            if (result.match) {
+                destMap.set(trip.id, result.match);
+            } else if (result.needsUserChoice && result.candidates.length > 0) {
+                pendingConflicts.push({
+                    tripId: trip.id,
+                    tripName: trip.name,
+                    tripPurpose: trip.purpose,
+                    tripStartDate: trip.startDate,
+                    tripEndDate: trip.endDate,
+                    candidates: result.candidates,
+                });
             }
-            if (recordKnoxId !== t.knoxId) return false;
-
-            // Date Overlap Check
-            // (StartA <= EndB) and (EndA >= StartB)
-            const startA = new Date(t.startDate);
-            const endA = new Date(t.endDate);
-            const startB = new Date(r.startDate);
-            const endB = new Date(r.endDate);
-
-            return startA <= endB && endA >= startB;
         });
 
-        if (match) {
-            return {
-                ...t,
-                location: match.destination || t.location,
-                purpose: match.purpose || t.purpose,
-                isMatched: true // Flag for UI
-            };
-        }
-        return t;
-    });
+        return { destinationMap: destMap, pendingDestConflicts: pendingConflicts };
+    }, [trips, tripRecords, destinationMappings]);
 
-    const tripsToDisplay = enhancedTrips; // Use enhanced trips for rendering
+    // Detect new destination conflicts and prompt user
+    useEffect(() => {
+        if (pendingDestConflicts.length > 0) {
+            setDestinationConflicts(pendingDestConflicts);
+        } else {
+            setDestinationConflicts([]);
+        }
+    }, [pendingDestConflicts]);
+
+    const tripsToDisplay = trips; // Use original trips for rendering (destination overlay applied at display time)
 
 
     // Persist viewMode to localStorage
@@ -218,33 +232,49 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
 
 
     // Zoom (Day Width)
-    const [dayWidth, setDayWidth] = useState(40);
+    const [dayWidth, setDayWidth] = useState<number>(savedPrefs?.dayWidth ?? 40);
     const MIN_DAY_WIDTH = 20;
     const MAX_DAY_WIDTH = 100;
 
     // Today Color Option
     type TodayColor = 'yellow' | 'green' | 'blue' | 'purple' | 'red';
-    const [todayColor, setTodayColor] = useState<TodayColor>('yellow');
+    const [todayColor, setTodayColor] = useState<TodayColor>(savedPrefs?.todayColor ?? 'yellow');
 
-    // UseRef for Gantt Container to attach passive: false listener
+    // Save Gantt preferences to localStorage whenever they change
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const prefs = {
+            dayWidth, ganttStartDate, ganttEndDate, categoryFilters,
+            ganttGroupFilter, ganttPartFilter, ganttDeptFilter,
+            activeTab, barOpacity, todayColor
+        };
+        localStorage.setItem('ganttViewPrefs', JSON.stringify(prefs));
+    }, [dayWidth, ganttStartDate, ganttEndDate, categoryFilters, ganttGroupFilter, ganttPartFilter, ganttDeptFilter, activeTab, barOpacity, todayColor]);
+
+    // UseRef for Gantt Container
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Handle Wheel Zoom with native listener for { passive: false } support
-    // Handle Wheel Zoom with React event instead of manual listener
-    const handleWheel = (e: React.WheelEvent) => {
-        // Check for Alt key to activate zoom
-        if (e.altKey) {
-            // e.preventDefault() is not guaranteed to work in React passive event, 
-            // but for zoom suppression we usually need native non-passive.
-            // However, React 18+ handles this mostly fine. 
-            // If strictly needed, we kept the ref approach, but to simplify debugging "scroll lock", we use React prop.
-            // Actually, to prevent Browser Zoom, we might need native.
-            // But let's assume the user is just scrolling.
+    // Handle Shift+Wheel Zoom
+    // Note: When Shift is held, browsers convert deltaY→deltaX for horizontal scrolling.
+    // So we check deltaX when shiftKey is pressed.
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
 
-            // To be safe for "Scroll Lock" bug, let's remove the preventDefault for now unless we are SURE it's zooming.
-            // Actually, let's keep the logic but purely in the Div prop.
-        }
-    };
+        const handleWheel = (e: WheelEvent) => {
+            if (e.shiftKey) {
+                e.preventDefault();
+                e.stopPropagation();
+                // Browser swaps deltaY↔deltaX when Shift is held, so use whichever is non-zero
+                const delta = e.deltaX || e.deltaY;
+                const zoomDelta = delta > 0 ? -5 : 5;
+                setDayWidth(prev => Math.max(MIN_DAY_WIDTH, Math.min(MAX_DAY_WIDTH, prev + zoomDelta)));
+            }
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => el.removeEventListener('wheel', handleWheel);
+    }, [viewMode]);
 
     const getTodayColorClass = (color: TodayColor, isHeader: boolean) => {
         // Opacity adjustment for header vs body
@@ -328,14 +358,28 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         }
     });
 
-    // Filter members by group/part/dept AND Active Status
+    // Filter trips by category (used for gantt member filtering and trip grouping)
+    const categoryFilteredTrips = tripsToDisplay.filter(t => categoryFilters[t.category ?? 'trip']);
+
+    // Build set of members who have ANY trip data (category-filtered, but not date-restricted)
+    const membersWithTrips = new Set<string>();
+    categoryFilteredTrips.forEach(t => {
+        if (t.knoxId) {
+            membersWithTrips.add(t.knoxId);
+        } else {
+            const match = members.find(m => m.name === t.name);
+            if (match) membersWithTrips.add(match.knoxId);
+        }
+    });
+
+    // Filter members by group/part/dept AND only show members with trip data
     const ganttMembers = sortedMembers.filter(m => {
         if (ganttDeptFilter !== 'all' && m.department !== ganttDeptFilter) return false;
         if (ganttGroupFilter !== 'all' && m.group !== ganttGroupFilter) return false;
         if (ganttPartFilter !== 'all' && m.part !== ganttPartFilter) return false;
 
-        // Hide members with no active trips in the current view - DISABLED temporarily to fix "Data Disappeared" confusion
-        // if (!activeMemberIds.has(m.knoxId)) return false;
+        // Only show members who have trip data
+        if (!membersWithTrips.has(m.knoxId)) return false;
 
         return true;
     });
@@ -348,32 +392,39 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         ? [...new Set(members.map(m => m.part).filter(Boolean))].sort()
         : PART_ORDER[ganttGroupFilter] || [...new Set(members.filter(m => m.group === ganttGroupFilter).map(m => m.part).filter(Boolean))].sort();
 
-    // Filter trips by category
-    const categoryFilteredTrips = tripsToDisplay.filter(t => categoryFilters[t.category ?? 'trip']);
-
     // Group trips by member for Gantt
     const tripsByMember = new Map<string, BusinessTrip[]>();
     ganttMembers.forEach(m => tripsByMember.set(m.knoxId, []));
 
     // Add trips
     const unmatchedTrips: BusinessTrip[] = [];
+    const hasActiveFilter = ganttDeptFilter !== 'all' || ganttGroupFilter !== 'all' || ganttPartFilter !== 'all';
     categoryFilteredTrips.forEach(t => {
         if (t.knoxId) {
             const memberTrips = tripsByMember.get(t.knoxId);
             if (memberTrips) {
                 memberTrips.push(t);
             } else {
-                // KnoxID exists in trip but not in members list? Should not happen if data integrity kept
-                unmatchedTrips.push(t);
+                // Member exists but filtered out by dept/group/part? → skip silently
+                const memberExists = members.some(m => m.knoxId === t.knoxId);
+                if (!memberExists && !hasActiveFilter) {
+                    unmatchedTrips.push(t);
+                }
             }
         } else {
             // Try to match by name if knoxId missing (legacy or import issue)
             const match = members.find(m => m.name === t.name);
             if (match) {
                 const memberTrips = tripsByMember.get(match.knoxId);
-                memberTrips?.push(t);
+                if (memberTrips) {
+                    memberTrips.push(t);
+                }
+                // If member is filtered out, skip silently
             } else {
-                unmatchedTrips.push(t);
+                // Truly unmatched — only show when no filters active
+                if (!hasActiveFilter) {
+                    unmatchedTrips.push(t);
+                }
             }
         }
     });
@@ -650,408 +701,442 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
                         </button>
                     </div>
                 </div>
+            </div>
 
-                {activeTab === 'attendance' ? (
-                    <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
-                        {/* Attendance View Controls */}
-                        <div className="flex items-center gap-2 flex-shrink-0 px-4 pb-2">
-                            {viewMode === 'list' ? (
-                                <>
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            {activeTab === 'attendance' ? (
+                <div className="flex-1 flex flex-col overflow-hidden relative min-h-0">
+                    {/* Attendance View Controls */}
+                    <div className="flex items-center gap-2 flex-shrink-0 px-4 pb-2">
+                        {viewMode === 'list' ? (
+                            <>
+                                <div className="relative flex-1">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="이름, 장소, 목적 검색..."
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                                    />
+                                </div>
+                                <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+                                    className="text-xs border border-gray-300 rounded-lg px-2 py-2 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
+                                    <option value="all">전체 상태</option>
+                                    <option value="active">출장중</option>
+                                    <option value="planned">예정</option>
+                                    <option value="completed">종료</option>
+                                </select>
+                            </>
+                        ) : (
+                            <>
+                                <div className="flex items-center gap-2 w-full">
+                                    <div className="flex items-center gap-1 text-sm bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
+                                        <Calendar className="w-3.5 h-3.5 text-gray-500" />
                                         <input
-                                            type="text"
-                                            placeholder="이름, 장소, 목적 검색..."
-                                            value={searchQuery}
-                                            onChange={e => setSearchQuery(e.target.value)}
-                                            className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                                            type="date"
+                                            value={ganttStartDate}
+                                            onChange={(e) => setGanttStartDate(e.target.value)}
+                                            className="bg-transparent border-none text-gray-700 dark:text-gray-300 text-xs focus:ring-0 p-0"
+                                        />
+                                        <span className="text-gray-400">~</span>
+                                        <input
+                                            type="date"
+                                            value={ganttEndDate}
+                                            onChange={(e) => setGanttEndDate(e.target.value)}
+                                            className="bg-transparent border-none text-gray-700 dark:text-gray-300 text-xs focus:ring-0 p-0"
                                         />
                                     </div>
-                                    <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
-                                        className="text-xs border border-gray-300 rounded-lg px-2 py-2 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
-                                        <option value="all">전체 상태</option>
-                                        <option value="active">출장중</option>
-                                        <option value="planned">예정</option>
-                                        <option value="completed">종료</option>
+
+                                    {/* Dept/Group/Part Filters */}
+                                    <select
+                                        value={ganttDeptFilter}
+                                        onChange={(e) => setGanttDeptFilter(e.target.value)}
+                                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                                    >
+                                        <option value="all">소속 전체</option>
+                                        {uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                                     </select>
-                                </>
-                            ) : (
-                                <>
-                                    <div className="flex items-center gap-2 w-full">
-                                        <div className="flex items-center gap-1 text-sm bg-gray-50 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700">
-                                            <Calendar className="w-3.5 h-3.5 text-gray-500" />
-                                            <input
-                                                type="date"
-                                                value={ganttStartDate}
-                                                onChange={(e) => setGanttStartDate(e.target.value)}
-                                                className="bg-transparent border-none text-gray-700 dark:text-gray-300 text-xs focus:ring-0 p-0"
-                                            />
-                                            <span className="text-gray-400">~</span>
-                                            <input
-                                                type="date"
-                                                value={ganttEndDate}
-                                                onChange={(e) => setGanttEndDate(e.target.value)}
-                                                className="bg-transparent border-none text-gray-700 dark:text-gray-300 text-xs focus:ring-0 p-0"
-                                            />
-                                        </div>
+                                    <select
+                                        value={ganttGroupFilter}
+                                        onChange={(e) => { setGanttGroupFilter(e.target.value); setGanttPartFilter('all'); }}
+                                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                                    >
+                                        <option value="all">그룹 전체</option>
+                                        {GROUP_ORDER.map(g => <option key={g} value={g}>{g}</option>)}
+                                    </select>
+                                    <select
+                                        value={ganttPartFilter}
+                                        onChange={(e) => setGanttPartFilter(e.target.value)}
+                                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                                    >
+                                        <option value="all">파트 전체</option>
+                                        {availableParts.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
 
-                                        {/* Dept/Group/Part Filters */}
-                                        <select
-                                            value={ganttDeptFilter}
-                                            onChange={(e) => setGanttDeptFilter(e.target.value)}
-                                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
-                                        >
-                                            <option value="all">소속 전체</option>
-                                            {uniqueDepartments.map(d => <option key={d} value={d}>{d}</option>)}
-                                        </select>
-                                        <select
-                                            value={ganttGroupFilter}
-                                            onChange={(e) => { setGanttGroupFilter(e.target.value); setGanttPartFilter('all'); }}
-                                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
-                                        >
-                                            <option value="all">그룹 전체</option>
-                                            {GROUP_ORDER.map(g => <option key={g} value={g}>{g}</option>)}
-                                        </select>
-                                        <select
-                                            value={ganttPartFilter}
-                                            onChange={(e) => setGanttPartFilter(e.target.value)}
-                                            className="text-xs border border-gray-300 rounded px-2 py-1 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
-                                        >
-                                            <option value="all">파트 전체</option>
-                                            {availableParts.map(p => <option key={p} value={p}>{p}</option>)}
-                                        </select>
-
-                                        {/* Category Toggle Buttons */}
-                                        <div className="flex items-center gap-1">
-                                            {(['trip', 'vacation', 'education', 'others'] as TripCategory[]).map(cat => (
-                                                <button
-                                                    key={cat}
-                                                    onClick={() => setCategoryFilters(f => ({ ...f, [cat]: !f[cat] }))}
-                                                    className={`px-2.5 py-1 text-xs rounded-full font-medium transition-all flex items-center gap-1.5 ${categoryFilters[cat]
-                                                        ? 'text-white shadow-sm'
-                                                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200'
-                                                        }`}
-                                                    style={categoryFilters[cat] ? { backgroundColor: categoryColors[cat].bg } : {}}
-                                                >
-                                                    <span className={`w-1.5 h-1.5 rounded-full bg-white`}></span>
-                                                    {categoryColors[cat].label}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        <div className="flex items-center gap-1.5 text-xs text-gray-400 ml-auto">
-                                            <span>* Alt+휠: 줌</span>
+                                    {/* Category Toggle Buttons */}
+                                    <div className="flex items-center gap-1">
+                                        {(['trip', 'vacation', 'education', 'others'] as TripCategory[]).map(cat => (
                                             <button
-                                                onClick={() => setShowSettings(s => !s)}
-                                                className={`p-1 rounded transition-colors ${showSettings ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/30' : 'text-gray-400 hover:text-gray-600'}`}
-                                                title="설정"
+                                                key={cat}
+                                                onClick={() => setCategoryFilters(f => ({ ...f, [cat]: !f[cat] }))}
+                                                className={`px-2.5 py-1 text-xs rounded-full font-medium transition-all flex items-center gap-1.5 ${categoryFilters[cat]
+                                                    ? 'text-white shadow-sm'
+                                                    : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200'
+                                                    }`}
+                                                style={categoryFilters[cat] ? { backgroundColor: categoryColors[cat].bg } : {}}
                                             >
-                                                <Settings className="w-3.5 h-3.5" />
+                                                <span className={`w-1.5 h-1.5 rounded-full bg-white`}></span>
+                                                {categoryColors[cat].label}
                                             </button>
-                                        </div>
+                                        ))}
                                     </div>
 
-                                    {/* Settings Panel (collapsible) */}
-                                    {showSettings && (
-                                        <div className="px-4 py-2 bg-gray-50/80 dark:bg-gray-800/80 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4 text-xs">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500 dark:text-gray-400 font-medium">밝기</span>
-                                                <input
-                                                    type="range"
-                                                    min="0.3"
-                                                    max="1"
-                                                    step="0.05"
-                                                    value={barOpacity}
-                                                    onChange={(e) => setBarOpacity(parseFloat(e.target.value))}
-                                                    className="w-20 h-1 accent-blue-500"
-                                                />
-                                                <span className="text-gray-400 w-8">{Math.round(barOpacity * 100)}%</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500 dark:text-gray-400 font-medium">오늘 색상</span>
-                                                <select
-                                                    value={todayColor}
-                                                    onChange={(e) => setTodayColor(e.target.value as TodayColor)}
-                                                    className="text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
-                                                >
-                                                    <option value="yellow">노란색</option>
-                                                    <option value="green">초록색</option>
-                                                    <option value="blue">파란색</option>
-                                                    <option value="purple">보라색</option>
-                                                    <option value="red">빨간색</option>
-                                                </select>
-                                            </div>
-                                            <div className="flex items-center gap-2 border-l border-gray-200 pl-4 ml-2">
-                                                <span className="text-gray-500 dark:text-gray-400 font-medium">색상 설정</span>
-                                                {(['trip', 'vacation', 'education', 'others'] as TripCategory[]).map(cat => (
-                                                    <div key={cat} className="flex items-center gap-1" title={categoryColors[cat].label}>
-                                                        <input
-                                                            type="color"
-                                                            value={categoryColors[cat].bg}
-                                                            onChange={(e) => handleColorChange(cat, e.target.value)}
-                                                            className="w-5 h-5 rounded cursor-pointer border-none p-0"
-                                                        />
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-gray-500 dark:text-gray-400 font-medium">범례</span>
-                                                {Object.entries(categoryColors).map(([key, val]) => (
-                                                    <span key={key} className="inline-flex items-center gap-0.5">
-                                                        <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: val.bg }}></span>
-                                                        <span className="text-gray-600 dark:text-gray-300">{val.label}</span>
-                                                    </span>
-                                                ))}
-                                            </div>
+                                    <div className="flex items-center gap-1.5 text-xs text-gray-400 ml-auto">
+                                        <div className="flex items-center gap-0.5">
+                                            <span className="text-gray-400 mr-1">줌:</span>
+                                            <button
+                                                onClick={() => setDayWidth(prev => Math.max(MIN_DAY_WIDTH, prev - 5))}
+                                                className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 font-bold text-sm transition-colors"
+                                                title="축소"
+                                            >−</button>
+                                            <span className="text-[10px] text-gray-400 w-8 text-center">{dayWidth}px</span>
+                                            <button
+                                                onClick={() => setDayWidth(prev => Math.min(MAX_DAY_WIDTH, prev + 5))}
+                                                className="w-6 h-6 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 font-bold text-sm transition-colors"
+                                                title="확대"
+                                            >+</button>
                                         </div>
-                                    )}
-                                </>
-                            )}
-                        </div>
+                                        {destinationConflicts.length > 0 && (
+                                            <button
+                                                onClick={() => setShowDestinationPicker(true)}
+                                                className="px-2 py-1 text-xs bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 rounded-md hover:bg-orange-200 dark:hover:bg-orange-900/50 transition-colors flex items-center gap-1"
+                                                title="동명이인 출장지 매칭 필요"
+                                            >
+                                                <AlertTriangle className="w-3 h-3" />
+                                                동명이인 {destinationConflicts.length}건
+                                            </button>
+                                        )}
+                                        <button
+                                            onClick={() => setShowSettings(s => !s)}
+                                            className={`p-1 rounded transition-colors ${showSettings ? 'text-blue-500 bg-blue-50 dark:bg-blue-900/30' : 'text-gray-400 hover:text-gray-600'}`}
+                                            title="설정"
+                                        >
+                                            <Settings className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                </div>
 
-                        {/* Import Toast */}
-                        {importToast && (
-                            <div className="flex-shrink-0 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-                                <p className="text-sm text-blue-700 dark:text-blue-300 whitespace-pre-line">{importToast}</p>
-                            </div>
+                                {/* Settings Panel (collapsible) */}
+                                {showSettings && (
+                                    <div className="px-4 py-2 bg-gray-50/80 dark:bg-gray-800/80 border-t border-gray-200 dark:border-gray-700 flex items-center gap-4 text-xs">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-500 dark:text-gray-400 font-medium">밝기</span>
+                                            <input
+                                                type="range"
+                                                min="0.3"
+                                                max="1"
+                                                step="0.05"
+                                                value={barOpacity}
+                                                onChange={(e) => setBarOpacity(parseFloat(e.target.value))}
+                                                className="w-20 h-1 accent-blue-500"
+                                            />
+                                            <span className="text-gray-400 w-8">{Math.round(barOpacity * 100)}%</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-500 dark:text-gray-400 font-medium">오늘 색상</span>
+                                            <select
+                                                value={todayColor}
+                                                onChange={(e) => setTodayColor(e.target.value as TodayColor)}
+                                                className="text-xs border border-gray-300 rounded px-1.5 py-0.5 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                                            >
+                                                <option value="yellow">노란색</option>
+                                                <option value="green">초록색</option>
+                                                <option value="blue">파란색</option>
+                                                <option value="purple">보라색</option>
+                                                <option value="red">빨간색</option>
+                                            </select>
+                                        </div>
+                                        <div className="flex items-center gap-2 border-l border-gray-200 pl-4 ml-2">
+                                            <span className="text-gray-500 dark:text-gray-400 font-medium">색상 설정</span>
+                                            {(['trip', 'vacation', 'education', 'others'] as TripCategory[]).map(cat => (
+                                                <div key={cat} className="flex items-center gap-1" title={categoryColors[cat].label}>
+                                                    <input
+                                                        type="color"
+                                                        value={categoryColors[cat].bg}
+                                                        onChange={(e) => handleColorChange(cat, e.target.value)}
+                                                        className="w-5 h-5 rounded cursor-pointer border-none p-0"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-gray-500 dark:text-gray-400 font-medium">범례</span>
+                                            {Object.entries(categoryColors).map(([key, val]) => (
+                                                <span key={key} className="inline-flex items-center gap-0.5">
+                                                    <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: val.bg }}></span>
+                                                    <span className="text-gray-600 dark:text-gray-300">{val.label}</span>
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
+                    </div>
 
-                        {/* Content */}
-                        <div className={`flex-1 relative min-h-0 ${viewMode === 'list' ? 'overflow-auto' : 'overflow-hidden'}`}>
-                            {viewMode === 'list' ? (
-                                <table className="w-full text-sm">
-                                    {/* ... Existing Table Header & Body ... */}
-                                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10">
-                                        <tr>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 w-12">#</th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => handleSort('name')}>
-                                                <div className="flex items-center gap-1">이름 {sortField === 'name' && <ArrowUpDown className="w-3 h-3" />}</div>
-                                            </th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400">기간</th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 text-center">일수</th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer" onClick={() => handleSort('location')}>
-                                                <div className="flex items-center gap-1">장소 {sortField === 'location' && <ArrowUpDown className="w-3 h-3" />}</div>
-                                            </th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer" onClick={() => handleSort('purpose')}>
-                                                <div className="flex items-center gap-1">목적 {sortField === 'purpose' && <ArrowUpDown className="w-3 h-3" />}</div>
-                                            </th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 text-center">상태</th>
-                                            <th className="px-4 py-2 w-10"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {sortedTrips.map((trip, idx) => {
-                                            const start = new Date(trip.startDate);
-                                            const end = new Date(trip.endDate);
-                                            const duration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+                    {/* Import Toast */}
+                    {importToast && (
+                        <div className="flex-shrink-0 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
+                            <p className="text-sm text-blue-700 dark:text-blue-300 whitespace-pre-line">{importToast}</p>
+                        </div>
+                    )}
 
+                    {/* Content */}
+                    <div className={`flex-1 relative min-h-0 ${viewMode === 'list' ? 'overflow-auto' : 'overflow-hidden'}`}>
+                        {viewMode === 'list' ? (
+                            <table className="w-full text-sm">
+                                {/* ... Existing Table Header & Body ... */}
+                                <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10">
+                                    <tr>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 w-12">#</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700" onClick={() => handleSort('name')}>
+                                            <div className="flex items-center gap-1">이름 {sortField === 'name' && <ArrowUpDown className="w-3 h-3" />}</div>
+                                        </th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400">기간</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 text-center">일수</th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer" onClick={() => handleSort('location')}>
+                                            <div className="flex items-center gap-1">장소 {sortField === 'location' && <ArrowUpDown className="w-3 h-3" />}</div>
+                                        </th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 cursor-pointer" onClick={() => handleSort('purpose')}>
+                                            <div className="flex items-center gap-1">목적 {sortField === 'purpose' && <ArrowUpDown className="w-3 h-3" />}</div>
+                                        </th>
+                                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600 dark:text-gray-400 text-center">상태</th>
+                                        <th className="px-4 py-2 w-10"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedTrips.map((trip, idx) => {
+                                        const start = new Date(trip.startDate);
+                                        const end = new Date(trip.endDate);
+                                        const duration = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                                        return (
+                                            <tr key={trip.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                                <td className="px-4 py-3 text-xs text-gray-400">{idx + 1}</td>
+                                                <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">
+                                                    <div className="flex items-center gap-1">
+                                                        {trip.name}
+                                                        {!trip.knoxId && (
+                                                            <span title="팀원 정보와 매칭되지 않음">
+                                                                <AlertCircle className="w-3 h-3 text-orange-400" />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">
+                                                    {trip.startDate} ~ {trip.endDate}
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-center">
+                                                    {duration}일
+                                                </td>
+                                                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{trip.location}</td>
+                                                <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{trip.purpose}</td>
+                                                <td className="px-4 py-3 text-center">
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusBadge(trip.derivedStatus)}`}>
+                                                        {getStatusLabel(trip.derivedStatus)}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3">
+                                                    <button
+                                                        onClick={e => handleDeleteTrip(e, trip.id)}
+                                                        className="p-1 text-gray-400 hover:text-red-500 transition-all"
+                                                    >
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        ) : (
+                            // Gantt View — Single scroll container with sticky header
+                            <div
+                                ref={containerRef}
+                                className="relative w-full h-full overflow-auto bg-white dark:bg-gray-900"
+
+                            >
+                                <div className="min-w-full w-fit">
+                                    {/* Timeline Header — Sticky Top */}
+                                    <div className="sticky top-0 z-30 flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
+                                        {/* Header Name Column: Dept | Group | Part | Name */}
+                                        <div className="sticky left-0 w-[280px] flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-40 flex text-[10px] items-center text-center font-semibold text-gray-500 dark:text-gray-400">
+                                            <div className="w-[60px] border-r border-gray-200 dark:border-gray-700 py-2">소속</div>
+                                            <div className="w-[50px] border-r border-gray-200 dark:border-gray-700 py-2">그룹</div>
+                                            <div className="w-[80px] border-r border-gray-200 dark:border-gray-700 py-2">파트</div>
+                                            <div className="flex-1 py-2">이름</div>
+                                        </div>
+                                        {/* Header Date Cells */}
+                                        {dates.map(date => {
+                                            const day = date.getDay();
+                                            const isWeekend = day === 0 || day === 6;
+                                            const isToday = date.toDateString() === new Date().toDateString();
                                             return (
-                                                <tr key={trip.id} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                                                    <td className="px-4 py-3 text-xs text-gray-400">{idx + 1}</td>
-                                                    <td className="px-4 py-3 font-medium text-gray-800 dark:text-gray-200">
-                                                        <div className="flex items-center gap-1">
-                                                            {trip.name}
-                                                            {!trip.knoxId && (
-                                                                <span title="팀원 정보와 매칭되지 않음">
-                                                                    <AlertCircle className="w-3 h-3 text-orange-400" />
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 font-mono text-xs">
-                                                        {trip.startDate} ~ {trip.endDate}
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400 text-center">
-                                                        {duration}일
-                                                    </td>
-                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{trip.location}</td>
-                                                    <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{trip.purpose}</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${getStatusBadge(trip.derivedStatus)}`}>
-                                                            {getStatusLabel(trip.derivedStatus)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <button
-                                                            onClick={e => handleDeleteTrip(e, trip.id)}
-                                                            className="p-1 text-gray-400 hover:text-red-500 transition-all"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </td>
-                                                </tr>
+                                                <div
+                                                    key={date.toISOString()}
+                                                    className={`flex-shrink-0 border-r border-gray-100 dark:border-gray-700 text-center text-xs py-1 ${isWeekend ? 'bg-gray-100 dark:bg-gray-700/30' : ''} ${isToday ? getTodayColorClass(todayColor, true) : ''}`}
+                                                    style={{ width: dayWidth }}
+                                                >
+                                                    <div className={`text-[10px] ${day === 0 ? 'text-red-500' : day === 6 ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
+                                                        {['일', '월', '화', '수', '목', '금', '토'][day]}
+                                                    </div>
+                                                    <div className={`text-gray-700 dark:text-gray-300 ${isToday ? 'font-bold' : 'font-medium'}`}>
+                                                        {date.getDate()}
+                                                    </div>
+                                                </div>
                                             );
                                         })}
-                                    </tbody>
-                                </table>
-                            ) : (
-                                // Gantt View — Single scroll container with sticky header
-                                <div
-                                    ref={containerRef}
-                                    className="relative w-full h-full overflow-auto bg-white dark:bg-gray-900"
-                                    onWheel={(e) => {
-                                        if (e.altKey) {
-                                            const zoomDelta = e.deltaY > 0 ? 5 : -5;
-                                            setDayWidth(prev => Math.max(MIN_DAY_WIDTH, Math.min(MAX_DAY_WIDTH, prev + zoomDelta)));
-                                        }
-                                    }}
-                                >
-                                    <div className="min-w-full w-fit">
-                                        {/* Timeline Header — Sticky Top */}
-                                        <div className="sticky top-0 z-30 flex border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800">
-                                            {/* Header Name Column: Dept | Group | Part | Name */}
-                                            <div className="sticky left-0 w-[280px] flex-shrink-0 bg-gray-50 dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 z-40 flex text-[10px] items-center text-center font-semibold text-gray-500 dark:text-gray-400">
-                                                <div className="w-[60px] border-r border-gray-200 dark:border-gray-700 py-2">소속</div>
-                                                <div className="w-[50px] border-r border-gray-200 dark:border-gray-700 py-2">그룹</div>
-                                                <div className="w-[80px] border-r border-gray-200 dark:border-gray-700 py-2">파트</div>
-                                                <div className="flex-1 py-2">이름</div>
+                                    </div>
+
+                                    {/* Member Rows */}
+                                    {ganttMembers.map((member) => {
+                                        const memberTrips = tripsByMember.get(member.knoxId) || [];
+                                        return (
+                                            <div key={member.knoxId} className="flex border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                                                {/* Static Name Column: Dept | Group | Part | Name */}
+                                                <div className="sticky left-0 w-[280px] flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 z-20 flex text-[10px] items-center text-center">
+                                                    <div className="w-[60px] flex-shrink-0 border-r border-gray-100 dark:border-gray-800 py-1.5 truncate text-gray-500 overflow-hidden px-1" title={member.department}>{member.department}</div>
+                                                    <div className="w-[50px] flex-shrink-0 border-r border-gray-100 dark:border-gray-800 py-1.5 truncate text-gray-500 overflow-hidden px-1" title={member.group}>{member.group}</div>
+                                                    <div className="w-[80px] flex-shrink-0 border-r border-gray-100 dark:border-gray-800 py-1.5 truncate text-gray-500 overflow-hidden px-1" title={member.part}>{member.part}</div>
+                                                    <div className="flex-1 py-1.5 font-bold text-gray-800 dark:text-gray-200 truncate px-2 text-left">
+                                                        {member.name}
+                                                    </div>
+                                                </div>
+
+                                                <div className="relative h-8 overflow-hidden" style={{ width: dates.length * dayWidth }}>
+                                                    {/* Grid lines */}
+                                                    <div className="absolute inset-0 flex pointer-events-none">
+                                                        {dates.map((date, i) => {
+                                                            const day = date.getDay();
+                                                            const isWeekend = day === 0 || day === 6;
+                                                            const isToday = date.toDateString() === new Date().toDateString();
+                                                            return (
+                                                                <div
+                                                                    key={i}
+                                                                    className={`flex-shrink-0 h-full border-r border-gray-100 dark:border-gray-800/50 ${isWeekend ? 'bg-gray-50/50 dark:bg-gray-800/20' : ''} ${isToday ? getTodayColorClass(todayColor, false) : ''}`}
+                                                                    style={{ width: dayWidth }}
+                                                                />
+                                                            );
+                                                        })}
+                                                    </div>
+
+                                                    {/* Trips */}
+                                                    {memberTrips.map(trip => {
+                                                        const start = new Date(trip.startDate);
+                                                        const end = new Date(trip.endDate);
+                                                        const viewStart = new Date(ganttStartDate);
+
+                                                        const diffDays = Math.round((start.getTime() - viewStart.getTime()) / (1000 * 60 * 60 * 24));
+                                                        const durationDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+                                                        if (diffDays + durationDays < 0) return null;
+
+                                                        const rawLeft = diffDays * dayWidth;
+                                                        const clampedLeft = Math.max(0, rawLeft);
+                                                        const clampOffset = clampedLeft - rawLeft; // how much was clipped
+                                                        const rawWidth = durationDays * dayWidth;
+                                                        const adjustedWidth = Math.max(dayWidth, rawWidth - clampOffset);
+
+                                                        // Category-based Colors
+                                                        const catColor = categoryColors[trip.category ?? 'trip'];
+                                                        const bgClass = catColor?.bg || '#cbd5e1';
+
+                                                        return (
+                                                            <div
+                                                                key={trip.id}
+                                                                className={`absolute top-1 h-6 rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] text-white overflow-hidden whitespace-nowrap z-0`}
+                                                                style={{
+                                                                    left: clampedLeft + 1,
+                                                                    width: adjustedWidth - 2,
+                                                                    opacity: barOpacity,
+                                                                    backgroundColor: bgClass
+                                                                }}
+                                                                title={`${buildDisplayLabel(trip.purpose, destinationMap.get(trip.id) || null, trip.startDate, trip.endDate)} (${trip.startDate}~${trip.endDate})`}
+                                                                onClick={() => {
+                                                                    const destMatch = destinationMap.get(trip.id);
+                                                                    const label = buildDisplayLabel(trip.purpose, destMatch || null, trip.startDate, trip.endDate);
+                                                                    alert(`${trip.name}\n${label}\n${trip.startDate} ~ ${trip.endDate}\n${destMatch?.destination || trip.location}`);
+                                                                }}
+                                                            >
+                                                                {buildDisplayLabel(trip.purpose, destinationMap.get(trip.id) || null, trip.startDate, trip.endDate)}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
                                             </div>
-                                            {/* Header Date Cells */}
-                                            {dates.map(date => {
-                                                const day = date.getDay();
-                                                const isWeekend = day === 0 || day === 6;
-                                                const isToday = date.toDateString() === new Date().toDateString();
-                                                return (
-                                                    <div
-                                                        key={date.toISOString()}
-                                                        className={`flex-shrink-0 border-r border-gray-100 dark:border-gray-700 text-center text-xs py-1 ${isWeekend ? 'bg-gray-100 dark:bg-gray-700/30' : ''} ${isToday ? getTodayColorClass(todayColor, true) : ''}`}
-                                                        style={{ width: dayWidth }}
-                                                    >
-                                                        <div className={`text-[10px] ${day === 0 ? 'text-red-500' : day === 6 ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'}`}>
-                                                            {['일', '월', '화', '수', '목', '금', '토'][day]}
-                                                        </div>
-                                                        <div className={`text-gray-700 dark:text-gray-300 ${isToday ? 'font-bold' : 'font-medium'}`}>
-                                                            {date.getDate()}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
+                                        );
+                                    })}
 
-                                        {/* Member Rows */}
-                                        {ganttMembers.map((member) => {
-                                            const memberTrips = tripsByMember.get(member.knoxId) || [];
-                                            return (
-                                                <div key={member.knoxId} className="flex border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                                                    {/* Static Name Column: Dept | Group | Part | Name */}
-                                                    <div className="sticky left-0 w-[280px] flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 z-20 flex text-[10px] items-center text-center">
-                                                        <div className="w-[60px] flex-shrink-0 border-r border-gray-100 dark:border-gray-800 py-1.5 truncate text-gray-500 overflow-hidden px-1" title={member.department}>{member.department}</div>
-                                                        <div className="w-[50px] flex-shrink-0 border-r border-gray-100 dark:border-gray-800 py-1.5 truncate text-gray-500 overflow-hidden px-1" title={member.group}>{member.group}</div>
-                                                        <div className="w-[80px] flex-shrink-0 border-r border-gray-100 dark:border-gray-800 py-1.5 truncate text-gray-500 overflow-hidden px-1" title={member.part}>{member.part}</div>
-                                                        <div className="flex-1 py-1.5 font-bold text-gray-800 dark:text-gray-200 truncate px-2 text-left">
-                                                            {member.name}
-                                                        </div>
+                                    {/* Unmatched Rows */}
+                                    {unmatchedTrips.length > 0 && (
+                                        <div className="bg-orange-50/30 dark:bg-orange-900/10 mt-2 border-t border-orange-200 dark:border-orange-800">
+                                            <div className="px-3 py-1 text-xs font-semibold text-orange-600 dark:text-orange-400">
+                                                ⚠️ 미확인 ({unmatchedTrips.length})
+                                            </div>
+                                            {unmatchedTrips.map(trip => (
+                                                <div key={trip.id} className="flex border-b border-gray-100 dark:border-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                                                    <div className="sticky left-0 w-32 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs font-medium z-10 flex items-center justify-between">
+                                                        <div className="text-orange-600 dark:text-orange-400 font-semibold">{trip.name}</div>
+                                                        <div className="text-gray-400 truncate ml-1 text-[10px]">미매칭</div>
                                                     </div>
-
-                                                    <div className="relative h-8 overflow-hidden" style={{ width: dates.length * dayWidth }}>
+                                                    <div className="relative h-8" style={{ width: dates.length * dayWidth }}>
                                                         {/* Grid lines */}
                                                         <div className="absolute inset-0 flex pointer-events-none">
                                                             {dates.map((date, i) => {
                                                                 const day = date.getDay();
                                                                 const isWeekend = day === 0 || day === 6;
-                                                                const isToday = date.toDateString() === new Date().toDateString();
-                                                                return (
-                                                                    <div
-                                                                        key={i}
-                                                                        className={`flex-shrink-0 h-full border-r border-gray-100 dark:border-gray-800/50 ${isWeekend ? 'bg-gray-50/50 dark:bg-gray-800/20' : ''} ${isToday ? getTodayColorClass(todayColor, false) : ''}`}
-                                                                        style={{ width: dayWidth }}
-                                                                    />
-                                                                );
+                                                                return <div key={i} className={`flex-shrink-0 h-full border-r border-gray-100 dark:border-gray-800/50 ${isWeekend ? 'bg-gray-50/50 dark:bg-gray-800/20' : ''}`} style={{ width: dayWidth }} />;
                                                             })}
                                                         </div>
 
-                                                        {/* Trips */}
-                                                        {memberTrips.map(trip => {
-                                                            const start = new Date(trip.startDate);
-                                                            const end = new Date(trip.endDate);
-                                                            const viewStart = new Date(ganttStartDate);
-
-                                                            const diffDays = Math.floor((start.getTime() - viewStart.getTime()) / (1000 * 60 * 60 * 24));
-                                                            const durationDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-                                                            if (diffDays + durationDays < 0) return null;
-
-                                                            const left = diffDays * dayWidth;
-                                                            const width = durationDays * dayWidth;
-
-                                                            // Category-based Colors
-                                                            const catColor = categoryColors[trip.category ?? 'trip'];
-                                                            const bgClass = catColor?.bg || '#cbd5e1';
-
-                                                            return (
-                                                                <div
-                                                                    key={trip.id}
-                                                                    className={`absolute top-1 h-6 rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] text-white overflow-hidden whitespace-nowrap z-0`}
-                                                                    style={{
-                                                                        left: Math.max(0, left) + 1,
-                                                                        width: Math.max(dayWidth, width) - 2,
-                                                                        opacity: barOpacity,
-                                                                        backgroundColor: bgClass
-                                                                    }}
-                                                                    title={`${trip.purpose} (${trip.startDate}~${trip.endDate})`}
-                                                                    onClick={() => alert(`${trip.name}\n${trip.purpose}\n${trip.startDate} ~ ${trip.endDate}\n${trip.location}`)}
-                                                                >
-                                                                    {trip.purpose}
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-
-                                        {/* Unmatched Rows */}
-                                        {unmatchedTrips.length > 0 && (
-                                            <div className="bg-orange-50/30 dark:bg-orange-900/10 mt-2 border-t border-orange-200 dark:border-orange-800">
-                                                <div className="px-3 py-1 text-xs font-semibold text-orange-600 dark:text-orange-400">
-                                                    ⚠️ 미확인 ({unmatchedTrips.length})
-                                                </div>
-                                                {unmatchedTrips.map(trip => (
-                                                    <div key={trip.id} className="flex border-b border-gray-100 dark:border-gray-800 hover:bg-orange-50 dark:hover:bg-orange-900/20">
-                                                        <div className="sticky left-0 w-32 flex-shrink-0 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs font-medium z-10 flex items-center justify-between">
-                                                            <div className="text-orange-600 dark:text-orange-400 font-semibold">{trip.name}</div>
-                                                            <div className="text-gray-400 truncate ml-1 text-[10px]">미매칭</div>
-                                                        </div>
-                                                        <div className="relative h-8" style={{ width: dates.length * dayWidth }}>
-                                                            {/* Grid lines */}
-                                                            <div className="absolute inset-0 flex pointer-events-none">
-                                                                {dates.map((date, i) => {
-                                                                    const day = date.getDay();
-                                                                    const isWeekend = day === 0 || day === 6;
-                                                                    return <div key={i} className={`flex-shrink-0 h-full border-r border-gray-100 dark:border-gray-800/50 ${isWeekend ? 'bg-gray-50/50 dark:bg-gray-800/20' : ''}`} style={{ width: dayWidth }} />;
-                                                                })}
-                                                            </div>
-
-                                                            <div className="absolute top-1 h-6 rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] text-white overflow-hidden whitespace-nowrap z-0"
-                                                                style={{
-                                                                    left: (Math.floor((new Date(trip.startDate).getTime() - new Date(ganttStartDate).getTime()) / (1000 * 60 * 60 * 24)) * dayWidth) + 1,
-                                                                    width: (Math.floor((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1) * dayWidth - 2,
-                                                                    backgroundColor: categoryColors[trip.category ?? 'trip']?.bg || '#cbd5e1'
-                                                                }}
-                                                                title={`${trip.purpose} (${trip.startDate}~${trip.endDate})`}
-                                                            >
-                                                                {trip.purpose}
-                                                            </div>
+                                                        <div className="absolute top-1 h-6 rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] text-white overflow-hidden whitespace-nowrap z-0"
+                                                            style={{
+                                                                left: (Math.round((new Date(trip.startDate).getTime() - new Date(ganttStartDate).getTime()) / (1000 * 60 * 60 * 24)) * dayWidth) + 1,
+                                                                width: (Math.round((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1) * dayWidth - 2,
+                                                                backgroundColor: categoryColors[trip.category ?? 'trip']?.bg || '#cbd5e1'
+                                                            }}
+                                                            title={`${buildDisplayLabel(trip.purpose, destinationMap.get(trip.id) || null, trip.startDate, trip.endDate)} (${trip.startDate}~${trip.endDate})`}
+                                                        >
+                                                            {buildDisplayLabel(trip.purpose, destinationMap.get(trip.id) || null, trip.startDate, trip.endDate)}
                                                         </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
-                            )}
-                        </div>
-                    </div>) : (
-                    <div className="flex-1 overflow-hidden relative">
-                        <TripRecordBoard lastUpdate={manualDataVersion} />
+                            </div>
+                        )}
                     </div>
-                )}
-            </div>
+                </div>) : (
+                <div className="flex-1 overflow-auto relative min-h-0">
+                    <TripRecordBoard lastUpdate={manualDataVersion} />
+                </div>
+            )}
             <TripNameResolverDialog
                 isOpen={showResolver}
                 onClose={() => setShowResolver(false)}
                 conflicts={conflicts}
                 onResolve={() => setManualDataVersion(v => v + 1)}
+            />
+            <TripDestinationPickerDialog
+                isOpen={showDestinationPicker}
+                onClose={() => setShowDestinationPicker(false)}
+                conflicts={destinationConflicts}
+                onResolve={() => {
+                    setDestinationMappings(getDestinationMappings());
+                    setShowDestinationPicker(false);
+                }}
             />
         </div >
     );

@@ -45,8 +45,8 @@ export function normalizeDate(dateStr: string, baseDate: Date = new Date()): str
         const m = parseInt(month, 10);
         const d = parseInt(day, 10);
 
-        const date = new Date(currentYear, m - 1, d);
-        return date.toISOString().split('T')[0];
+        // Direct string formatting to avoid timezone issues (toISOString converts to UTC)
+        return `${currentYear}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
 
     // YYYY-MM-DD
@@ -82,12 +82,10 @@ function normalizeDateRange(startStr: string, endStr: string, baseDate: Date = n
             startYear = currentYear - 1;
         }
 
-        const startDate = new Date(startYear, start.month - 1, start.day);
-        const endDate = new Date(endYear, end.month - 1, end.day);
-
+        // Direct string formatting to avoid timezone issues
         return {
-            startDate: startDate.toISOString().split('T')[0],
-            endDate: endDate.toISOString().split('T')[0],
+            startDate: `${startYear}-${String(start.month).padStart(2, '0')}-${String(start.day).padStart(2, '0')}`,
+            endDate: `${endYear}-${String(end.month).padStart(2, '0')}-${String(end.day).padStart(2, '0')}`,
         };
     }
 

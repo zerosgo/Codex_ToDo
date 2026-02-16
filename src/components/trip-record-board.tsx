@@ -109,23 +109,23 @@ export function TripRecordBoard({ lastUpdate }: { lastUpdate?: number }) {
             )}
 
             {/* List */}
-            <div className="flex-1 overflow-auto">
-                <table className="w-full text-sm block overflow-x-auto whitespace-nowrap">
-                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10 block min-w-full">
-                        <tr className="flex">
+            <div className="flex-1 overflow-auto min-h-0">
+                <table className="text-sm whitespace-nowrap" style={{ minWidth: `${columnCount * 128 + 64}px` }}>
+                    <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 z-10">
+                        <tr>
                             {Array.from({ length: columnCount }).map((_, i) => (
-                                <th key={i} className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 w-32 flex-shrink-0 border-r border-gray-100 dark:border-gray-800">
+                                <th key={i} className="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-400 border-r border-gray-100 dark:border-gray-800" style={{ minWidth: '128px' }}>
                                     {headers[i] || `Column ${i + 1}`}
                                 </th>
                             ))}
-                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 w-16 sticky right-0 bg-gray-50 dark:bg-gray-800 shadow-l">
+                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 dark:text-gray-400 sticky right-0 bg-gray-50 dark:bg-gray-800 shadow-l" style={{ minWidth: '64px' }}>
                                 관리
                             </th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800 block min-w-full">
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                         {filteredRecords.map(record => (
-                            <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 flex">
+                            <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                                 {Array.from({ length: columnCount }).map((_, i) => {
                                     // Use rawData if available, otherwise map legacy fields to standard 8 cols
                                     let content = '';
@@ -145,12 +145,12 @@ export function TripRecordBoard({ lastUpdate }: { lastUpdate?: number }) {
                                         }
                                     }
                                     return (
-                                        <td key={i} className="px-4 py-3 text-gray-900 dark:text-gray-100 w-32 flex-shrink-0 border-r border-gray-100 dark:border-gray-800 overflow-hidden text-ellipsis block">
+                                        <td key={i} className="px-4 py-3 text-gray-900 dark:text-gray-100 border-r border-gray-100 dark:border-gray-800 overflow-hidden text-ellipsis" style={{ minWidth: '128px', maxWidth: '256px' }}>
                                             {content}
                                         </td>
                                     );
                                 })}
-                                <td className="px-4 py-3 text-right w-16 sticky right-0 bg-white dark:bg-gray-900 shadow-l flex items-center justify-end">
+                                <td className="px-4 py-3 text-right sticky right-0 bg-white dark:bg-gray-900 shadow-l" style={{ minWidth: '64px' }}>
                                     <button
                                         onClick={() => handleDelete(record.id)}
                                         className="p-1 text-gray-400 hover:text-red-500 transition-all"
