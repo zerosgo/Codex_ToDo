@@ -1,6 +1,98 @@
-import { Category, Task, AppData, CATEGORY_COLORS } from './types';
+﻿import { Category, Task, AppData, CATEGORY_COLORS } from './types';
+import { idbDelete, idbGetAll, idbSet } from './indexeddb-storage';
 
 const STORAGE_KEY = 'local-tasks-data';
+const IDB_MIGRATION_KEY = 'local-tasks-idb-migrated-v1';
+
+const IDB_SYNC_KEYS = [
+    // Core data
+    'local-tasks-data',
+    'local-tasks-quick-links',
+    'local-tasks-notes',
+    'local-tasks-labels',
+    'local-tasks-theme',
+    'local-tasks-layout',
+    'local-tasks-layout-state',
+    'local-tasks-layout-presets',
+    'local-tasks-team-members',
+    'local-tasks-business-trips',
+    'local-tasks-trip-records',
+    'tripNameResolutions',
+    'tripDestinationMappings',
+    // UI/state keys
+    'calendar-settings',
+    'calendar-collapsed-weeks',
+    'search-history',
+    'sidebar_calendar_expanded',
+    'sidebar_quicklinks_expanded',
+    'sidebar_pinnedmemos_expanded',
+    'team-member-custom-columns',
+    'team-member-visible-columns',
+    'tripViewMode',
+    'tripCategoryColors',
+    'ganttViewPrefs',
+    'tripRecordColumns',
+    'tripRecordHeaders',
+    'local-tasks-current-view',
+    'local-tasks-current-month',
+    'local-tasks-selected-date',
+    'local-tasks-selected-category-ids',
+    IDB_MIGRATION_KEY,
+] as const;
+
+function shouldSyncKey(key: string): boolean {
+    return (IDB_SYNC_KEYS as readonly string[]).includes(key);
+}
+
+function getStorageItem(key: string): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(key);
+}
+
+function setStorageItem(key: string, value: string): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(key, value);
+    if (shouldSyncKey(key)) {
+        void idbSet(key, value).catch(() => undefined);
+    }
+}
+
+function removeStorageItem(key: string): void {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(key);
+    if (shouldSyncKey(key)) {
+        void idbDelete(key).catch(() => undefined);
+    }
+}
+
+export async function initializeIndexedDBStorage(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    try {
+        // If localStorage is empty but IndexedDB has data, restore local cache first.
+        if (!getStorageItem(STORAGE_KEY)) {
+            const snapshot = await idbGetAll();
+            Object.entries(snapshot).forEach(([key, value]) => {
+                if (shouldSyncKey(key)) {
+                    setStorageItem(key, value);
+                }
+            });
+        }
+
+        // One-time migration from current localStorage data to IndexedDB.
+        if (getStorageItem(IDB_MIGRATION_KEY) !== '1') {
+            for (const key of IDB_SYNC_KEYS) {
+                const value = getStorageItem(key);
+                if (value !== null) {
+                    await idbSet(key, value);
+                }
+            }
+            setStorageItem(IDB_MIGRATION_KEY, '1');
+            await idbSet(IDB_MIGRATION_KEY, '1');
+        }
+    } catch (e) {
+        console.error('IndexedDB initialization failed:', e);
+    }
+}
 
 // Generate unique ID
 export function generateId(): string {
@@ -13,14 +105,14 @@ export function getData(): AppData {
         return { categories: [], tasks: [] };
     }
 
-    const data = localStorage.getItem(STORAGE_KEY);
+    const data = getStorageItem(STORAGE_KEY);
     if (!data) {
         // Initialize with default category
         const defaultData: AppData = {
             categories: [
                 {
                     id: generateId(),
-                    name: '내 할 일',
+                    name: '내할일',
                     color: CATEGORY_COLORS[0].value,
                     order: 0,
                     createdAt: new Date().toISOString(),
@@ -38,7 +130,7 @@ export function getData(): AppData {
 // Save all data to LocalStorage
 export function saveData(data: AppData): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    setStorageItem(STORAGE_KEY, JSON.stringify(data));
 }
 
 // Category CRUD
@@ -216,25 +308,66 @@ export function sortTasksByDate(categoryId: string): void {
 // Export data as JSON (includes all data including notes, settings, layout)
 export function exportData(): string {
     const data = getData();
+    const labels = getLabels();
     const quickLinks = getQuickLinks();
     const notes = getNotes();
+    const teamMembers = getTeamMembers();
+    const businessTrips = getBusinessTrips();
+    const tripRecords = getTripRecords();
+    const nameResolutions = getNameResolutions();
     const theme = getTheme();
     const layoutState = getLayoutState();
     const layoutPresets = getAllLayoutPresets();
 
     // Calendar settings (read directly from localStorage as it's not managed fully in storage.ts)
-    const calendarSettings = typeof window !== 'undefined' ? localStorage.getItem('calendar-settings') : null;
+    const calendarSettings = typeof window !== 'undefined' ? getStorageItem('calendar-settings') : null;
+    const tripDestinationMappings = typeof window !== 'undefined' ? getStorageItem('tripDestinationMappings') : null;
+
+    const UI_STATE_KEYS = [
+        'calendar-settings',
+        'calendar-collapsed-weeks',
+        'search-history',
+        'sidebar_calendar_expanded',
+        'sidebar_quicklinks_expanded',
+        'sidebar_pinnedmemos_expanded',
+        'team-member-custom-columns',
+        'team-member-visible-columns',
+        'tripViewMode',
+        'tripCategoryColors',
+        'ganttViewPrefs',
+        'tripRecordColumns',
+        'tripRecordHeaders',
+        'local-tasks-current-view',
+        'local-tasks-current-month',
+        'local-tasks-selected-date',
+        'local-tasks-selected-category-ids',
+    ] as const;
+
+    const uiState: Record<string, string> = {};
+    if (typeof window !== 'undefined') {
+        UI_STATE_KEYS.forEach((key) => {
+            const value = getStorageItem(key);
+            if (value !== null) uiState[key] = value;
+        });
+    }
 
     return JSON.stringify({
-        version: 2,
+        version: 3,
         timestamp: new Date().toISOString(),
         data,
+        labels,
         quickLinks,
         notes,
+        teamMembers,
+        businessTrips,
+        tripRecords,
+        nameResolutions,
         theme,
         layoutState,
         layoutPresets,
-        calendarSettings: calendarSettings ? JSON.parse(calendarSettings) : null
+        calendarSettings: calendarSettings ? JSON.parse(calendarSettings) : null,
+        tripDestinationMappings: tripDestinationMappings ? JSON.parse(tripDestinationMappings) : null,
+        uiState,
     }, null, 2);
 }
 
@@ -263,24 +396,79 @@ export function importData(jsonString: string): boolean {
             saveNotes(parsed.notes);
         }
 
-        // 4. Theme
+        // 4. Labels
+        if (parsed.labels) {
+            saveLabels(parsed.labels);
+        }
+
+        // 5. Team Members
+        if (parsed.teamMembers) {
+            saveTeamMembers(parsed.teamMembers);
+        }
+
+        // 6. Trips / Attendance DB
+        if (parsed.businessTrips) {
+            saveBusinessTrips(parsed.businessTrips);
+        }
+        if (parsed.tripRecords) {
+            saveTripRecords(parsed.tripRecords);
+        }
+        if (parsed.nameResolutions) {
+            setStorageItem(NAME_RESOLUTION_KEY, JSON.stringify(parsed.nameResolutions));
+        }
+        if (parsed.tripDestinationMappings) {
+            setStorageItem('tripDestinationMappings', JSON.stringify(parsed.tripDestinationMappings));
+        }
+
+        // 7. Theme
         if (parsed.theme) {
             setTheme(parsed.theme);
         }
 
-        // 5. Layout State
+        // 8. Layout State
         if (parsed.layoutState) {
-            localStorage.setItem(LAYOUT_STATE_KEY, JSON.stringify(parsed.layoutState));
+            setStorageItem(LAYOUT_STATE_KEY, JSON.stringify(parsed.layoutState));
         }
 
-        // 6. Layout Presets
+        // 9. Layout Presets
         if (parsed.layoutPresets) {
-            localStorage.setItem(LAYOUT_PRESETS_KEY, JSON.stringify(parsed.layoutPresets));
+            setStorageItem(LAYOUT_PRESETS_KEY, JSON.stringify(parsed.layoutPresets));
         }
 
-        // 7. Calendar Settings
+        // 10. Calendar Settings
         if (parsed.calendarSettings) {
-            localStorage.setItem('calendar-settings', JSON.stringify(parsed.calendarSettings));
+            setStorageItem('calendar-settings', JSON.stringify(parsed.calendarSettings));
+        }
+
+        // 11. UI State Snapshot (current page/view/filter states)
+        if (parsed.uiState && typeof parsed.uiState === 'object') {
+            const UI_STATE_KEYS = [
+                'calendar-settings',
+                'calendar-collapsed-weeks',
+                'search-history',
+                'sidebar_calendar_expanded',
+                'sidebar_quicklinks_expanded',
+                'sidebar_pinnedmemos_expanded',
+                'team-member-custom-columns',
+                'team-member-visible-columns',
+                'tripViewMode',
+                'tripCategoryColors',
+                'ganttViewPrefs',
+                'tripRecordColumns',
+                'tripRecordHeaders',
+                'local-tasks-current-view',
+                'local-tasks-current-month',
+                'local-tasks-selected-date',
+                'local-tasks-selected-category-ids',
+            ] as const;
+
+            UI_STATE_KEYS.forEach((key) => removeStorageItem(key));
+            UI_STATE_KEYS.forEach((key) => {
+                const value = parsed.uiState[key];
+                if (typeof value === 'string') {
+                    setStorageItem(key, value);
+                }
+            });
         }
 
         return true;
@@ -297,14 +485,14 @@ import { QuickLink } from './types';
 
 export function getQuickLinks(): QuickLink[] {
     if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(QUICK_LINKS_KEY);
+    const data = getStorageItem(QUICK_LINKS_KEY);
     if (!data) return [];
     return JSON.parse(data).sort((a: QuickLink, b: QuickLink) => a.order - b.order);
 }
 
 export function saveQuickLinks(links: QuickLink[]): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(QUICK_LINKS_KEY, JSON.stringify(links));
+    setStorageItem(QUICK_LINKS_KEY, JSON.stringify(links));
 }
 
 export function addQuickLink(name: string, url: string, options: Partial<QuickLink> = {}): QuickLink {
@@ -358,12 +546,12 @@ export type Theme = 'light' | 'dark';
 
 export function getTheme(): Theme {
     if (typeof window === 'undefined') return 'light';
-    return (localStorage.getItem(THEME_KEY) as Theme) || 'light';
+    return (getStorageItem(THEME_KEY) as Theme) || 'light';
 }
 
 export function setTheme(theme: Theme): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(THEME_KEY, theme);
+    setStorageItem(THEME_KEY, theme);
 }
 
 // Layout settings
@@ -392,7 +580,7 @@ const DEFAULT_LAYOUT_STATE: LayoutState = {
 // Get current layout state (auto-saved)
 export function getLayoutState(): LayoutState {
     if (typeof window === 'undefined') return DEFAULT_LAYOUT_STATE;
-    const data = localStorage.getItem(LAYOUT_STATE_KEY);
+    const data = getStorageItem(LAYOUT_STATE_KEY);
     if (!data) return DEFAULT_LAYOUT_STATE;
     try {
         return { ...DEFAULT_LAYOUT_STATE, ...JSON.parse(data) };
@@ -406,7 +594,7 @@ export function saveLayoutState(state: Partial<LayoutState>): void {
     if (typeof window === 'undefined') return;
     const current = getLayoutState();
     const updated = { ...current, ...state };
-    localStorage.setItem(LAYOUT_STATE_KEY, JSON.stringify(updated));
+    setStorageItem(LAYOUT_STATE_KEY, JSON.stringify(updated));
 }
 
 // Layout presets (5 slots: index 0-4 for Ctrl+6~0)
@@ -417,7 +605,7 @@ export interface LayoutPreset extends LayoutState {
 
 export function getLayoutPreset(index: number): LayoutPreset | null {
     if (typeof window === 'undefined' || index < 0 || index > 4) return null;
-    const data = localStorage.getItem(LAYOUT_PRESETS_KEY);
+    const data = getStorageItem(LAYOUT_PRESETS_KEY);
     if (!data) return null;
     try {
         const presets: (LayoutPreset | null)[] = JSON.parse(data);
@@ -430,23 +618,23 @@ export function getLayoutPreset(index: number): LayoutPreset | null {
 export function saveLayoutPreset(index: number, state: LayoutState, name?: string): LayoutPreset | null {
     if (typeof window === 'undefined' || index < 0 || index > 4) return null;
 
-    const data = localStorage.getItem(LAYOUT_PRESETS_KEY);
+    const data = getStorageItem(LAYOUT_PRESETS_KEY);
     const presets: (LayoutPreset | null)[] = data ? JSON.parse(data) : [null, null, null, null, null];
 
     const preset: LayoutPreset = {
         ...state,
-        name: name || `프리셋 ${index + 1}`,
+        name: name || `?꾨━??${index + 1}`,
         savedAt: new Date().toISOString(),
     };
 
     presets[index] = preset;
-    localStorage.setItem(LAYOUT_PRESETS_KEY, JSON.stringify(presets));
+    setStorageItem(LAYOUT_PRESETS_KEY, JSON.stringify(presets));
     return preset;
 }
 
 export function getAllLayoutPresets(): (LayoutPreset | null)[] {
     if (typeof window === 'undefined') return [null, null, null, null, null];
-    const data = localStorage.getItem(LAYOUT_PRESETS_KEY);
+    const data = getStorageItem(LAYOUT_PRESETS_KEY);
     if (!data) return [null, null, null, null, null];
     try {
         return JSON.parse(data);
@@ -471,7 +659,7 @@ import { Note } from './types';
 
 export function getNotes(): Note[] {
     if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(NOTES_KEY);
+    const data = getStorageItem(NOTES_KEY);
     if (!data) return [];
     return JSON.parse(data).sort((a: Note, b: Note) => {
         // Pinned notes first, then by order
@@ -482,7 +670,7 @@ export function getNotes(): Note[] {
 
 function saveNotes(notes: Note[]): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+    setStorageItem(NOTES_KEY, JSON.stringify(notes));
 }
 
 export function addNote(title: string, content: string = '', color: string = '#ffffff'): Note {
@@ -538,14 +726,14 @@ import { Label } from './types';
 
 export function getLabels(): Label[] {
     if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(LABELS_KEY);
+    const data = getStorageItem(LABELS_KEY);
     if (!data) return [];
     return JSON.parse(data).sort((a: Label, b: Label) => a.name.localeCompare(b.name));
 }
 
 function saveLabels(labels: Label[]): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(LABELS_KEY, JSON.stringify(labels));
+    setStorageItem(LABELS_KEY, JSON.stringify(labels));
 }
 
 export function addLabel(name: string): Label {
@@ -599,14 +787,14 @@ import { TeamMember } from './types';
 
 export function getTeamMembers(): TeamMember[] {
     if (typeof window === 'undefined') return [];
-    const data = localStorage.getItem(TEAM_MEMBERS_KEY);
+    const data = getStorageItem(TEAM_MEMBERS_KEY);
     if (!data) return [];
     return JSON.parse(data).sort((a: TeamMember, b: TeamMember) => a.name.localeCompare(b.name, 'ko'));
 }
 
 export function saveTeamMembers(members: TeamMember[]): void {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(TEAM_MEMBERS_KEY, JSON.stringify(members));
+    setStorageItem(TEAM_MEMBERS_KEY, JSON.stringify(members));
 }
 
 export function addTeamMember(member: Omit<TeamMember, 'id' | 'createdAt' | 'updatedAt'>): TeamMember {
@@ -647,13 +835,13 @@ const TRIP_STORAGE_KEY = 'business-trips';
 
 export function getBusinessTrips(): import('./types').BusinessTrip[] {
     if (typeof window === 'undefined') return [];
-    const stored = localStorage.getItem(TRIP_STORAGE_KEY);
+    const stored = getStorageItem(TRIP_STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
 }
 
 export function saveBusinessTrips(trips: import('./types').BusinessTrip[]) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(TRIP_STORAGE_KEY, JSON.stringify(trips));
+    setStorageItem(TRIP_STORAGE_KEY, JSON.stringify(trips));
 }
 
 export function addBusinessTrip(trip: Omit<import('./types').BusinessTrip, 'id' | 'createdAt' | 'updatedAt'>) {
@@ -681,13 +869,13 @@ const TRIP_RECORD_STORAGE_KEY = 'trip-records';
 
 export function getTripRecords(): import('./types').TripRecord[] {
     if (typeof window === 'undefined') return [];
-    const stored = localStorage.getItem(TRIP_RECORD_STORAGE_KEY);
+    const stored = getStorageItem(TRIP_RECORD_STORAGE_KEY);
     return stored ? JSON.parse(stored) : [];
 }
 
 export function saveTripRecords(records: import('./types').TripRecord[]) {
     if (typeof window === 'undefined') return;
-    localStorage.setItem(TRIP_RECORD_STORAGE_KEY, JSON.stringify(records));
+    setStorageItem(TRIP_RECORD_STORAGE_KEY, JSON.stringify(records));
 }
 
 export function addTripRecord(record: Omit<import('./types').TripRecord, 'id' | 'createdAt' | 'updatedAt'>) {
@@ -715,7 +903,7 @@ const NAME_RESOLUTION_KEY = 'trip-name-resolution';
 
 export function getNameResolutions(): Record<string, string> {
     if (typeof window === 'undefined') return {};
-    const stored = localStorage.getItem(NAME_RESOLUTION_KEY);
+    const stored = getStorageItem(NAME_RESOLUTION_KEY);
     return stored ? JSON.parse(stored) : {};
 }
 
@@ -723,12 +911,13 @@ export function saveNameResolution(name: string, knoxId: string) {
     const resolutions = getNameResolutions();
     resolutions[name] = knoxId;
     if (typeof window === 'undefined') return;
-    localStorage.setItem(NAME_RESOLUTION_KEY, JSON.stringify(resolutions));
+    setStorageItem(NAME_RESOLUTION_KEY, JSON.stringify(resolutions));
 }
 
 export function removeNameResolution(name: string) {
     const resolutions = getNameResolutions();
     delete resolutions[name];
     if (typeof window === 'undefined') return;
-    localStorage.setItem(NAME_RESOLUTION_KEY, JSON.stringify(resolutions));
+    setStorageItem(NAME_RESOLUTION_KEY, JSON.stringify(resolutions));
 }
+

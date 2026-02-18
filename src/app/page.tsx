@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Category, Task, TeamMember } from '@/lib/types';
 import { format } from 'date-fns';
-import { getCategories, getTasks, addTask, getTheme, setTheme, Theme, getLayoutState, saveLayoutState, getLayoutPreset, saveLayoutPreset, Layout, LayoutState, generateId, addCategory, deleteTask, updateTask, addNote, updateNote } from '@/lib/storage';
+import { getCategories, getTasks, addTask, getTheme, setTheme, Theme, getLayoutState, saveLayoutState, getLayoutPreset, saveLayoutPreset, Layout, LayoutState, generateId, addCategory, deleteTask, updateTask, addNote, updateNote, initializeIndexedDBStorage } from '@/lib/storage';
 import { Sidebar } from '@/components/sidebar';
 import { TaskList } from '@/components/task-list';
 import { CalendarView } from '@/components/calendar-view';
@@ -26,8 +26,33 @@ import { PanelLeftClose, PanelLeft, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Home() {
+  const loadSavedViewMode = (): 'calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard' | 'teamStatus' => {
+    if (typeof window === 'undefined') return 'calendar';
+    const saved = localStorage.getItem('local-tasks-current-view');
+    const allowed = ['calendar', 'keep', 'favorites', 'team', 'trip', 'dashboard', 'teamStatus'];
+    return (saved && allowed.includes(saved)) ? (saved as 'calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard' | 'teamStatus') : 'calendar';
+  };
+  const loadSavedDate = (key: string): Date | undefined => {
+    if (typeof window === 'undefined') return undefined;
+    const raw = localStorage.getItem(key);
+    if (!raw) return undefined;
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
+  };
+  const loadSavedCategoryIds = (): string[] => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = localStorage.getItem('local-tasks-selected-category-ids');
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>(loadSavedCategoryIds);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [dialogType, setDialogType] = useState<'export' | 'import' | null>(null);
   const [isScheduleImportOpen, setIsScheduleImportOpen] = useState(false);
@@ -36,17 +61,17 @@ export default function Home() {
   const [detailTask, setDetailTask] = useState<Task | null>(null);
   const [taskListWidth, setTaskListWidth] = useState(400);
   const [isResizing, setIsResizing] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  const [currentMonth, setCurrentMonth] = useState(() => loadSavedDate('local-tasks-current-month') || new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(() => loadSavedDate('local-tasks-selected-date'));
   const [theme, setThemeState] = useState<Theme>('light');
   const [layout, setLayoutState] = useState<Layout>(1);
   const [showWeekends, setShowWeekends] = useState(true);
-  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard' | 'teamStatus'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard' | 'teamStatus'>(loadSavedViewMode);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [notesVersion, setNotesVersion] = useState(0);
   const [isTeamScheduleModalOpen, setIsTeamScheduleModalOpen] = useState(false);
   const [editingScheduleTask, setEditingScheduleTask] = useState<Task | null>(null);
-  const [collectionGroups, setCollectionGroups] = useState<string[]>(['CP', 'OLB', 'LASER', '라미1', '라미2']);
+  const [collectionGroups, setCollectionGroups] = useState<string[]>(['CP', 'OLB', 'LASER', '?쇰?1', '?쇰?2']);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedMemberForModal, setSelectedMemberForModal] = useState<TeamMember | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,7 +86,7 @@ export default function Home() {
 
   // Load tasks for selected categories (multiple)
   const loadTasks = useCallback(() => {
-    const teamScheduleCat = categories.find(c => c.name === '팀 일정');
+    const teamScheduleCat = categories.find(c => c.name === '? ?쇱젙');
     let targetIds = [...selectedCategoryIds];
 
     // Always include 'Team Schedule' for Calendar view visibility
@@ -79,23 +104,31 @@ export default function Home() {
 
   // Initial load
   useEffect(() => {
-    let cats = loadCategories();
+    let cancelled = false;
+    (async () => {
+      await initializeIndexedDBStorage();
+      if (cancelled) return;
 
-    // Ensure 'Team Schedule' category exists
-    if (!cats.find(c => c.name === '팀 일정')) {
-      addCategory('팀 일정');
-      cats = loadCategories();
-    }
+      let cats = loadCategories();
 
-    if (cats.length > 0 && selectedCategoryIds.length === 0) {
-      const defaultIds = [cats[0].id];
-      const teamSchedule = cats.find(c => c.name === '팀 일정');
-      if (teamSchedule && teamSchedule.id !== cats[0].id) {
-        defaultIds.push(teamSchedule.id);
+      // Ensure 'Team Schedule' category exists
+      if (!cats.find(c => c.name === '? ?쇱젙')) {
+        addCategory('? ?쇱젙');
+        cats = loadCategories();
       }
-      setSelectedCategoryIds(defaultIds);
-    }
-    setIsLoading(false);
+
+      if (cats.length > 0 && selectedCategoryIds.length === 0) {
+        const defaultIds = [cats[0].id];
+        const teamSchedule = cats.find(c => c.name === '? ?쇱젙');
+        if (teamSchedule && teamSchedule.id !== cats[0].id) {
+          defaultIds.push(teamSchedule.id);
+        }
+        setSelectedCategoryIds(defaultIds);
+      }
+      setIsLoading(false);
+    })();
+
+    return () => { cancelled = true; };
   }, [loadCategories, selectedCategoryIds.length]);
 
   // Load tasks when category changes
@@ -169,7 +202,7 @@ export default function Home() {
           };
           saveLayoutPreset(presetIndex, currentState);
           // Show brief notification (optional)
-          console.log(`프리셋 ${presetIndex + 1} 저장됨`);
+          console.log(`Preset ${presetIndex + 1} saved`);
         } else {
           // Load preset
           const preset = getLayoutPreset(presetIndex);
@@ -179,9 +212,9 @@ export default function Home() {
             setIsSidebarVisible(preset.isSidebarVisible);
             setShowWeekends(preset.showWeekends);
             saveLayoutState(preset); // Also update auto-save state
-            console.log(`프리셋 ${presetIndex + 1} 불러옴`);
+            console.log(`Preset ${presetIndex + 1} loaded`);
           } else {
-            console.log(`프리셋 ${presetIndex + 1} 없음`);
+            console.log(`Preset ${presetIndex + 1} not found`);
           }
         }
       }
@@ -198,18 +231,18 @@ export default function Home() {
         // Read from clipboard and import
         navigator.clipboard.readText().then(clipboardText => {
           if (!clipboardText.trim()) {
-            alert('클립보드가 비어있습니다.');
+            alert('?대┰蹂대뱶媛 鍮꾩뼱?덉뒿?덈떎.');
             return;
           }
           const result = parseScheduleText(clipboardText, currentMonth.getFullYear(), currentMonth.getMonth());
           if (result.length === 0) {
-            alert('감지된 일정이 없습니다. 텍스트 형식을 확인해주세요.');
+            alert('媛먯????쇱젙???놁뒿?덈떎. ?띿뒪???뺤떇???뺤씤?댁＜?몄슂.');
             return;
           }
           handleScheduleImport(result);
         }).catch(err => {
-          console.error('클립보드 읽기 실패:', err);
-          alert('클립보드를 읽을 수 없습니다. 브라우저 권한을 확인해주세요.');
+          console.error('?대┰蹂대뱶 ?쎄린 ?ㅽ뙣:', err);
+          alert('?대┰蹂대뱶瑜??쎌쓣 ???놁뒿?덈떎. 釉뚮씪?곗? 沅뚰븳???뺤씤?댁＜?몄슂.');
         });
       }
     };
@@ -221,6 +254,27 @@ export default function Home() {
   useEffect(() => {
     viewModeRef.current = viewMode;
   }, [viewMode]);
+
+  // Persist current screen state for full backup/restore
+  useEffect(() => {
+    localStorage.setItem('local-tasks-current-view', viewMode);
+  }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('local-tasks-current-month', currentMonth.toISOString());
+  }, [currentMonth]);
+
+  useEffect(() => {
+    if (selectedDate) {
+      localStorage.setItem('local-tasks-selected-date', selectedDate.toISOString());
+    } else {
+      localStorage.removeItem('local-tasks-selected-date');
+    }
+  }, [selectedDate]);
+
+  useEffect(() => {
+    localStorage.setItem('local-tasks-selected-category-ids', JSON.stringify(selectedCategoryIds));
+  }, [selectedCategoryIds]);
 
   // Load layout state from localStorage on mount
   useEffect(() => {
@@ -328,11 +382,11 @@ export default function Home() {
     // 2. First category that is NOT 'Team Schedule'
 
     let targetCategoryId = selectedCategoryIds[0];
-    const scheduleCategory = categories.find(c => c.name === '팀 일정');
+    const scheduleCategory = categories.find(c => c.name === '? ?쇱젙');
 
     // If current selection is Team Schedule (or empty), try to find a better one
     if (scheduleCategory && targetCategoryId === scheduleCategory.id) {
-      const defaultCategory = categories.find(c => c.name !== '팀 일정');
+      const defaultCategory = categories.find(c => c.name !== '? ?쇱젙');
       if (defaultCategory) {
         targetCategoryId = defaultCategory.id;
       }
@@ -425,9 +479,9 @@ export default function Home() {
 
   const handleScheduleImport = useCallback((schedules: ParsedSchedule[]) => {
     // 1. Find or create "Team Schedule" category
-    let scheduleCategory = categories.find(c => c.name === '팀 일정');
+    let scheduleCategory = categories.find(c => c.name === '? ?쇱젙');
     if (!scheduleCategory) {
-      scheduleCategory = addCategory('팀 일정');
+      scheduleCategory = addCategory('? ?쇱젙');
     }
 
     // 2. Clear existing tasks in the Team Schedule category (Smart Overwrite Strategy)
@@ -524,13 +578,13 @@ export default function Home() {
           const [dateStr, title] = key.split('|');
           // Build content (without title - title goes to note.title)
           let noteContent = '';
-          if (data.resourceUrl) noteContent += `🔗 자료: ${data.resourceUrl}\n`;
-          if (data.tags && data.tags.length > 0) noteContent += `🏷️ 태그: ${data.tags.join(', ')}\n`;
-          if (data.notes) noteContent += `📝 메모:\n${data.notes}`;
+          if (data.resourceUrl) noteContent += `?뵕 ?먮즺: ${data.resourceUrl}\n`;
+          if (data.tags && data.tags.length > 0) noteContent += `?뤇截??쒓렇: ${data.tags.join(', ')}\n`;
+          if (data.notes) noteContent += `?뱷 硫붾え:\n${data.notes}`;
 
           // Save to Keep and Pin it for easy access (Sidebar)
           // addNote(title, content, color) - use proper parameter order
-          const noteTitle = `[자동백업] ${dateStr} ${title}`;
+          const noteTitle = `[?먮룞諛깆뾽] ${dateStr} ${title}`;
           const newNote = addNote(noteTitle, noteContent, 'yellow');
           // We need to pin it so it shows up in the sidebar for easy Drag & Drop
           // Use synchronous update to ensure state is ready before setNotesVersion triggers re-render
@@ -556,9 +610,9 @@ export default function Home() {
     setTimeout(() => {
       if (orphanedCount > 0) {
         // Just notify user, don't switch view - pinned memos are visible in sidebar
-        window.alert(`총 ${schedules.length}개의 일정이 업데이트되었습니다.\n\n⚠️ ${orphanedCount}개의 변경된 일정 데이터가 사이드바 [고정 메모]에 안전하게 백업되었습니다.\n\n사이드바에서 메모를 캘린더 일정 위로 드래그하여 병합할 수 있습니다.`);
+        window.alert(`珥?${schedules.length}媛쒖쓽 ?쇱젙???낅뜲?댄듃?섏뿀?듬땲??\n\n?좑툘 ${orphanedCount}媛쒖쓽 蹂寃쎈맂 ?쇱젙 ?곗씠?곌? ?ъ씠?쒕컮 [怨좎젙 硫붾え]???덉쟾?섍쾶 諛깆뾽?섏뿀?듬땲??\n\n?ъ씠?쒕컮?먯꽌 硫붾え瑜?罹섎┛???쇱젙 ?꾨줈 ?쒕옒洹명븯??蹂묓빀?????덉뒿?덈떎.`);
       } else {
-        window.alert(`총 ${schedules.length}개의 일정이 성공적으로 업데이트되었습니다.`);
+        window.alert(`珥?${schedules.length}媛쒖쓽 ?쇱젙???깃났?곸쑝濡??낅뜲?댄듃?섏뿀?듬땲??`);
       }
     }, 100);
   }, [categories, selectedCategoryIds, loadCategories, loadTasks, setViewMode]);
@@ -599,7 +653,7 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">로딩 중...</div>
+        <div className="text-gray-500">濡쒕뵫 以?..</div>
       </div>
     );
   }
@@ -617,7 +671,7 @@ export default function Home() {
           ? (isSidebarVisible ? 'right-[252px]' : 'right-4')
           : (isSidebarVisible ? 'left-[252px]' : 'left-4')
           }`}
-        title={isSidebarVisible ? "사이드바 숨기기 (Ctrl+`)" : "사이드바 보이기 (Ctrl+`)"}
+        title={isSidebarVisible ? "?ъ씠?쒕컮 ?④린湲?(Ctrl+`)" : "?ъ씠?쒕컮 蹂댁씠湲?(Ctrl+`)"}
       >
         {isSidebarVisible ? (
           <PanelLeftClose className="w-5 h-5" />
@@ -685,7 +739,7 @@ export default function Home() {
               categories={categories}
               tasks={tasks.filter(t => {
                 const category = categories.find(c => c.id === t.categoryId);
-                return category?.name !== '팀 일정';
+                return category?.name !== '? ?쇱젙';
               })}
               onTasksChange={handleTasksChange}
               collectionGroups={collectionGroups}
@@ -768,7 +822,7 @@ export default function Home() {
                   setSelectedNoteId(noteId);
                 }}
                 onSearchClick={() => setIsSearchOpen(true)}
-                teamScheduleCategoryId={categories.find(c => c.name === '팀 일정')?.id || ''}
+                teamScheduleCategoryId={categories.find(c => c.name === '? ?쇱젙')?.id || ''}
               />
             ) : null}
           </div>
@@ -830,7 +884,7 @@ export default function Home() {
         }}
         onScheduleAdded={handleTasksChange}
         initialDate={new Date()} // Not used for edit
-        teamScheduleCategoryId={categories.find(c => c.name === '팀 일정')?.id || ''}
+        teamScheduleCategoryId={categories.find(c => c.name === '? ?쇱젙')?.id || ''}
         existingTask={editingScheduleTask}
       />
       <SearchCommandDialog

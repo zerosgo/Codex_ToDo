@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Category, Task, CATEGORY_COLORS, QuickLink, Note } from '@/lib/types';
@@ -325,7 +325,7 @@ export function Sidebar({
                     className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-2 w-full"
                 >
                     {isCalendarExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-                    <span>📅 미니 캘린더</span>
+                    <span>미니 캘린더</span>
                 </button>
                 <AnimatePresence>
                     {isCalendarExpanded && (
@@ -469,14 +469,14 @@ export function Sidebar({
                                             <span
                                                 className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1"
                                             >
-                                                {note.title || '제목 없음'}
+                                                {note.title || '?쒕ぉ ?놁쓬'}
                                             </span>
                                             <button
                                                 className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all rounded z-10"
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    if (window.confirm('이 메모를 삭제하시겠습니까?')) {
+                                                    if (window.confirm('??硫붾え瑜???젣?섏떆寃좎뒿?덇퉴?')) {
                                                         deleteNote(note.id);
                                                         loadPinnedNotes();
                                                     }
@@ -508,7 +508,7 @@ export function Sidebar({
                     >
                         <span className="flex items-center gap-2">
                             <FolderOpen className="w-4 h-4" />
-                            자주 쓰는 파일 ({quickLinks.length})
+                            즐겨찾기 링크 ({quickLinks.length})
                         </span>
                         {isQuickLinksExpanded ? (
                             <ChevronDown className="w-4 h-4" />
@@ -547,7 +547,7 @@ export function Sidebar({
                                                 </TooltipTrigger>
                                                 <TooltipContent side="bottom" align="start" className="bg-gray-800 text-white border-gray-700">
                                                     {link.name}
-                                                    <span className="text-xs text-gray-400 ml-2">(더블 클릭하여 수정)</span>
+                                                    <span className="text-xs text-gray-400 ml-2">(더블 클릭해 수정)</span>
                                                 </TooltipContent>
                                             </Tooltip>
                                         </div>
@@ -601,11 +601,11 @@ export function Sidebar({
                                     }}
                                 >
                                     <Plus className="w-3 h-3 mr-1" />
-                                    파일 추가
+                                    링크 추가
                                 </Button>
                                 {quickLinks.length === 0 && (
                                     <p className="text-xs text-gray-400 text-center py-2">
-                                        자주 쓰는 파일을 추가해보세요
+                                        즐겨찾기 링크를 추가해보세요
                                     </p>
                                 )}
                             </motion.div>
@@ -625,7 +625,7 @@ export function Sidebar({
                     onClick={() => setIsAddDialogOpen(true)}
                 >
                     <Plus className="w-4 h-4 mr-2" />
-                    새 리스트 만들기
+                    카테고리 만들기
                 </Button>
                 <div className="flex flex-col gap-1">
                     <Button
@@ -644,50 +644,24 @@ export function Sidebar({
                     >
                         가져오기
                     </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs w-full mt-2 border-blue-200 hover:bg-blue-50 text-blue-700"
-                        onClick={onImportSchedule}
-                    >
-                        팀 일정 가져오기
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs w-full mt-1 border-purple-200 hover:bg-purple-50 text-purple-700"
-                        onClick={onTeamViewClick}
-                    >
-                        <Users className="w-3.5 h-3.5 mr-1" />
-                        팀원 관리
-                    </Button>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-xs w-full mt-1 border-blue-200 hover:bg-blue-50 text-blue-700"
-                        onClick={onTripViewClick}
-                    >
-                        <Plane className="w-3.5 h-3.5 mr-1" />
-                        출장 관리
-                    </Button>
-                    {/* 대시보드 버튼 - 필요시 다시 활성화
+                    {/* ??쒕낫??踰꾪듉 - ?꾩슂???ㅼ떆 ?쒖꽦??
                     <Button
                         variant="outline"
                         size="sm"
                         className="text-xs w-full mt-2 border-indigo-200 hover:bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:hover:bg-indigo-900/30 dark:text-indigo-400"
                         onClick={onDashboardClick}
                     >
-                        📊 대시보드
+                        ?뱤 ??쒕낫??
                     </Button>
                     */}
                 </div>
             </div >
 
             {/* Add Category Dialog */}
-            < Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} >
+            <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen} >
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>새 리스트 만들기</DialogTitle>
+                        <DialogTitle>카테고리 만들기</DialogTitle>
                     </DialogHeader>
                     <Input
                         placeholder="리스트 이름"
@@ -708,10 +682,10 @@ export function Sidebar({
             </Dialog >
 
             {/* Edit Category Dialog */}
-            < Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} >
+            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen} >
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>리스트 편집</DialogTitle>
+                        <DialogTitle>카테고리 수정</DialogTitle>
                     </DialogHeader>
                     <div className="space-y-4">
                         <Input
@@ -752,11 +726,11 @@ export function Sidebar({
             </Dialog >
 
             {/* Delete Category Confirmation Dialog */}
-            < Dialog open={!!categoryToDelete
+            <Dialog open={!!categoryToDelete
             } onOpenChange={(open) => !open && setCategoryToDelete(null)}>
                 <DialogContent showCloseButton={false} className="sm:max-w-[400px]">
                     <DialogHeader>
-                        <DialogTitle>리스트 삭제</DialogTitle>
+                        <DialogTitle>카테고리 삭제</DialogTitle>
                         <DialogDescription>
                             "{categoryToDelete?.name}" 리스트를 삭제하시겠습니까?<br />
                             포함된 모든 할 일도 함께 삭제됩니다.
@@ -781,12 +755,12 @@ export function Sidebar({
             </Dialog >
 
             {/* Quick Link Add/Edit Dialog */}
-            < Dialog open={isQuickLinkDialogOpen} onOpenChange={setIsQuickLinkDialogOpen} >
+            <Dialog open={isQuickLinkDialogOpen} onOpenChange={setIsQuickLinkDialogOpen} >
                 <DialogContent>
                     <DialogHeader>
                         <div className="flex items-center justify-between">
                             <DialogTitle>
-                                {editingQuickLink ? '파일 수정' : '자주 쓰는 파일 추가'}
+                                {editingQuickLink ? '링크 수정' : '즐겨찾기 링크 추가'}
                             </DialogTitle>
                             <button
                                 type="button"
@@ -801,7 +775,7 @@ export function Sidebar({
                         <div>
                             <label className="text-sm font-medium text-gray-700">파일명</label>
                             <Input
-                                placeholder="예: 예산표"
+                                placeholder="예: 업무 폴더"
                                 value={quickLinkName}
                                 onChange={(e) => setQuickLinkName(e.target.value)}
                                 className="mt-1"
@@ -833,10 +807,10 @@ export function Sidebar({
             </Dialog >
 
             {/* Quick Link Delete Confirmation Dialog */}
-            < Dialog open={!!quickLinkToDelete} onOpenChange={(open) => !open && setQuickLinkToDelete(null)}>
+            <Dialog open={!!quickLinkToDelete} onOpenChange={(open) => !open && setQuickLinkToDelete(null)}>
                 <DialogContent showCloseButton={false} className="sm:max-w-[400px]">
                     <DialogHeader>
-                        <DialogTitle>파일 삭제</DialogTitle>
+                        <DialogTitle>링크 삭제</DialogTitle>
                         <DialogDescription>
                             "{quickLinkToDelete?.name}" 링크를 삭제하시겠습니까?
                         </DialogDescription>
@@ -868,4 +842,5 @@ export function Sidebar({
         </div >
     );
 }
+
 
