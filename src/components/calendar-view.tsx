@@ -32,6 +32,7 @@ import { TeamScheduleSearchModal } from './team-schedule-search-modal';
 import { CalendarSettingsModal, CalendarSettings, DEFAULT_SETTINGS } from './calendar-settings-modal';
 import { getHoliday } from '../lib/holidays';
 import { Settings } from 'lucide-react';
+import { TeamMemberStatusTable } from './team-member-status-table';
 
 interface CalendarViewProps {
     tasks: Task[];
@@ -83,6 +84,7 @@ export function CalendarView({
     const [trips, setTrips] = useState<BusinessTrip[]>([]);
     const [tripRecords, setTripRecords] = useState<TripRecord[]>([]);
     const [attendanceModal, setAttendanceModal] = useState<'trip' | 'vacation' | 'education' | null>(null);
+    const [isTeamStatusModalOpen, setIsTeamStatusModalOpen] = useState(false);
 
     // Load attendance data
     useEffect(() => {
@@ -549,6 +551,12 @@ export function CalendarView({
                             </button>
                         ));
                     })()}
+                    <button
+                        onClick={() => setIsTeamStatusModalOpen(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 text-sm font-medium rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 hover:shadow-sm hover:scale-[1.03] transition-all"
+                    >
+                        팀원 현황
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-4">
@@ -1310,6 +1318,41 @@ export function CalendarView({
                 onSettingsChange={setSettings}
                 onReset={() => setSettings(DEFAULT_SETTINGS)}
             />
+
+            {/* Team Member Status Modal */}
+            <AnimatePresence>
+                {isTeamStatusModalOpen && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+                        onClick={() => setIsTeamStatusModalOpen(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.98, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.98, opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            className="w-full max-w-7xl max-h-[90vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-gray-100">팀원 현황</h3>
+                                <button
+                                    onClick={() => setIsTeamStatusModalOpen(false)}
+                                    className="p-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-4">
+                                <TeamMemberStatusTable members={members} heightClassName="h-[72vh]" />
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
             {/* Attendance Detail Modal */}
             <AnimatePresence>

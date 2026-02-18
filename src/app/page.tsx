@@ -18,6 +18,7 @@ import { TeamMemberBoard } from '@/components/team-member-board';
 import { TripBoard } from '@/components/trip-board';
 import { TeamMemberModal } from '@/components/team-member-modal';
 import { DashboardView } from '@/components/dashboard-view';
+import { TeamMemberStatusView } from '@/components/team-member-status-view';
 
 import { ParsedSchedule, parseScheduleText } from '@/lib/schedule-parser';
 import { Button } from '@/components/ui/button';
@@ -40,7 +41,7 @@ export default function Home() {
   const [theme, setThemeState] = useState<Theme>('light');
   const [layout, setLayoutState] = useState<Layout>(1);
   const [showWeekends, setShowWeekends] = useState(true);
-  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard'>('calendar');
+  const [viewMode, setViewMode] = useState<'calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard' | 'teamStatus'>('calendar');
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [notesVersion, setNotesVersion] = useState(0);
   const [isTeamScheduleModalOpen, setIsTeamScheduleModalOpen] = useState(false);
@@ -136,16 +137,17 @@ export default function Home() {
         setLayoutState(newLayout);
         saveLayoutState({ layout: newLayout });
       }
-      // Ctrl + Left/Right Arrow : Cycle through Calendar -> Keep -> Favorites
+      // Ctrl + Left/Right Arrow : Cycle through main work views (excluding Dashboard/Favorites)
       if ((e.ctrlKey || e.metaKey) && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
         e.preventDefault();
         setViewMode(prev => {
-          const views: ('calendar' | 'keep' | 'favorites' | 'team' | 'trip' | 'dashboard')[] = ['dashboard', 'calendar', 'favorites', 'keep', 'team', 'trip'];
-          const currentIdx = views.indexOf(prev);
+          const views: ('calendar' | 'keep' | 'team' | 'trip')[] = ['calendar', 'keep', 'team', 'trip'];
+          const currentIdx = views.indexOf(prev as (typeof views)[number]);
+          const safeIdx = currentIdx === -1 ? 0 : currentIdx;
           if (e.key === 'ArrowRight') {
-            return views[(currentIdx + 1) % views.length];
+            return views[(safeIdx + 1) % views.length];
           } else {
-            return views[(currentIdx - 1 + views.length) % views.length];
+            return views[(safeIdx - 1 + views.length) % views.length];
           }
         });
       }
@@ -750,11 +752,14 @@ export default function Home() {
             ) : viewMode === 'team' ? (
               <TeamMemberBoard
                 onDataChange={handleTasksChange}
+                onTeamStatusClick={() => setViewMode('teamStatus')}
               />
             ) : viewMode === 'trip' ? (
               <TripBoard
                 onDataChange={handleTasksChange}
               />
+            ) : viewMode === 'teamStatus' ? (
+              <TeamMemberStatusView onBackToTeam={() => setViewMode('team')} />
             ) : viewMode === 'dashboard' ? (
               <DashboardView
                 onTaskClick={(task) => setDetailTask(task)}
@@ -771,7 +776,7 @@ export default function Home() {
 
         // Render based on layout
         // For 'team' or 'trip' views, we hide the task list to give full width to the board
-        if (viewMode === 'team' || viewMode === 'trip' || viewMode === 'dashboard') {
+        if (viewMode === 'team' || viewMode === 'trip' || viewMode === 'dashboard' || viewMode === 'teamStatus') {
           // Respect Layout 3 (Sidebar on Right)
           if (layout === 3) {
             return <>{mainPanel}{sidebarPanel}</>;

@@ -127,6 +127,7 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
     const [barOpacity, setBarOpacity] = useState(savedPrefs?.barOpacity ?? 0.8);
     const [showSettings, setShowSettings] = useState(false);
     const [destFilters, setDestFilters] = useState<Record<string, boolean>>(savedPrefs?.destFilters ?? {});
+    const [hidePastTrips, setHidePastTrips] = useState<boolean>(savedPrefs?.hidePastTrips ?? true);
 
     // Custom Category Colors
     const [categoryColors, setCategoryColors] = useState(DEFAULT_CATEGORY_COLORS);
@@ -242,7 +243,14 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
     const uniqueDestinations = useMemo(() => {
         const dests = new Set<string>();
         destinationMap.forEach(m => { if (m.destination) dests.add(m.destination); });
-        return [...dests].sort();
+        const order = ['SDV', 'SDD', 'SDT', 'SDN'];
+        const rank = new Map(order.map((d, i) => [d, i]));
+        return [...dests].sort((a, b) => {
+            const ra = rank.has(a) ? rank.get(a)! : Number.MAX_SAFE_INTEGER;
+            const rb = rank.has(b) ? rank.get(b)! : Number.MAX_SAFE_INTEGER;
+            if (ra !== rb) return ra - rb;
+            return a.localeCompare(b);
+        });
     }, [destinationMap]);
 
     // Initialize dest filters for new destinations (default: all visible)
@@ -278,6 +286,13 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         return 'active';
     };
 
+    const isPastTrip = (trip: BusinessTrip) => {
+        const now = new Date();
+        const end = new Date(trip.endDate);
+        end.setHours(23, 59, 59, 999);
+        return now > end;
+    };
+
     // Derived state for display
     const tripsWithStatus = tripsToDisplay.map(t => ({
         ...t,
@@ -301,10 +316,10 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         const prefs = {
             dayWidth, ganttStartDate, ganttEndDate, categoryFilters,
             ganttGroupFilter, ganttPartFilter, ganttDeptFilter,
-            activeTab, barOpacity, todayColor, destFilters
+            activeTab, barOpacity, todayColor, destFilters, hidePastTrips
         };
         localStorage.setItem('ganttViewPrefs', JSON.stringify(prefs));
-    }, [dayWidth, ganttStartDate, ganttEndDate, categoryFilters, ganttGroupFilter, ganttPartFilter, ganttDeptFilter, activeTab, barOpacity, todayColor, destFilters]);
+    }, [dayWidth, ganttStartDate, ganttEndDate, categoryFilters, ganttGroupFilter, ganttPartFilter, ganttDeptFilter, activeTab, barOpacity, todayColor, destFilters, hidePastTrips]);
 
     // UseRef for Gantt Container
     const containerRef = useRef<HTMLDivElement>(null);
@@ -417,6 +432,9 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
     const categoryFilteredTrips = tripsToDisplay.filter(t => {
         // Category filter
         if (!categoryFilters[t.category ?? 'trip']) return false;
+
+        // Hide past trips (default ON)
+        if (hidePastTrips && isPastTrip(t)) return false;
 
         // Destination filter (only for trip category)
         if (t.category === 'trip' || !t.category) {
@@ -626,7 +644,9 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
         const header = '이름\t그룹\t파트\t출장지\t출발일\t복귀일\t목적';
         const rows = activeTrips.map(t => {
             // Find member info
-            const member = members.find(m => m.knoxId === t.knoxId) || { group: '', part: '' };
+            const member = members.find(m => m.knoxId === t.knoxId)
+                || members.find(m => m.name === t.name)
+                || { group: '', part: '' };
             return `${t.name}\t${member.group}\t${member.part}\t${t.location}\t${t.startDate}\t${t.endDate}\t${t.purpose}`;
         });
 
@@ -882,6 +902,17 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
                                         </div>
                                     )}
 
+                                    <button
+                                        onClick={() => setHidePastTrips(v => !v)}
+                                        className={`px-2 py-0.5 text-[10px] rounded-full font-medium transition-all ${hidePastTrips
+                                            ? 'bg-gray-900 text-white dark:bg-gray-200 dark:text-gray-900'
+                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200'
+                                            }`}
+                                        title="지난 일정 숨김"
+                                    >
+                                        지난 일정 숨김
+                                    </button>
+
                                     <div className="flex items-center gap-1.5 text-xs text-gray-400 ml-auto">
                                         <div className="flex items-center gap-0.5">
                                             <span className="text-gray-400 mr-1">줌:</span>
@@ -1129,6 +1160,7 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
                                                             const start = new Date(trip.startDate);
                                                             const end = new Date(trip.endDate);
                                                             const viewStart = new Date(ganttStartDate);
+                                                            const pastTrip = isPastTrip(trip);
 
                                                             const diffDays = Math.round((start.getTime() - viewStart.getTime()) / (1000 * 60 * 60 * 24));
                                                             const durationDays = Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
@@ -1164,18 +1196,20 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
                                                             const barColor = (trip.category === 'trip' || !trip.category) && destMatch?.destination
                                                                 ? getDestinationColor(destMatch.destination)
                                                                 : (categoryColors[trip.category ?? 'trip']?.bg || '#cbd5e1');
+                                                            const finalBarColor = pastTrip ? '#bcc0c5' : barColor;
+                                                            const finalOpacity = pastTrip ? 1 : barOpacity;
 
                                                             return (
                                                                 <div
                                                                     key={trip.id}
-                                                                    className={`absolute rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] text-white overflow-hidden whitespace-nowrap z-0`}
+                                                                    className={`absolute rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] ${pastTrip ? 'text-black' : 'text-white'} overflow-hidden whitespace-nowrap z-0`}
                                                                     style={{
                                                                         left: clampedLeft + 1,
                                                                         width: adjustedWidth - 2,
                                                                         top: barTop,
                                                                         height: barHeight,
-                                                                        opacity: barOpacity,
-                                                                        backgroundColor: barColor
+                                                                        opacity: finalOpacity,
+                                                                        backgroundColor: finalBarColor
                                                                     }}
                                                                     title={`${buildDisplayLabel(trip.purpose, destinationMap.get(trip.id) || null, trip.startDate, trip.endDate)} (${trip.startDate}~${trip.endDate})`}
                                                                     onClick={() => {
@@ -1216,11 +1250,13 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
                                                             })}
                                                         </div>
 
-                                                        <div className="absolute top-1 h-6 rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] text-white overflow-hidden whitespace-nowrap z-0"
+                                                        <div className={`absolute top-1 h-6 rounded shadow-sm border border-white/20 px-1.5 flex items-center text-[10px] ${isPastTrip(trip) ? 'text-black' : 'text-white'} overflow-hidden whitespace-nowrap z-0`}
                                                             style={{
                                                                 left: (Math.round((new Date(trip.startDate).getTime() - new Date(ganttStartDate).getTime()) / (1000 * 60 * 60 * 24)) * dayWidth) + 1,
                                                                 width: (Math.round((new Date(trip.endDate).getTime() - new Date(trip.startDate).getTime()) / (1000 * 60 * 60 * 24)) + 1) * dayWidth - 2,
+                                                                opacity: isPastTrip(trip) ? 1 : barOpacity,
                                                                 backgroundColor: (() => {
+                                                                    if (isPastTrip(trip)) return '#bcc0c5';
                                                                     const dm = destinationMap.get(trip.id);
                                                                     return (trip.category === 'trip' || !trip.category) && dm?.destination
                                                                         ? getDestinationColor(dm.destination)

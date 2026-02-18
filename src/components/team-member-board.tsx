@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TeamMember } from '@/lib/types';
@@ -19,6 +19,7 @@ import {
 
 interface TeamMemberBoardProps {
     onDataChange?: () => void;
+    onTeamStatusClick?: () => void;
 }
 
 type SortField = 'name' | 'position' | 'department' | 'group' | 'part' | 'workLocation' | 'positionYear' | 'birthYear' | 'knoxId' | 'employeeId' | 'status';
@@ -47,7 +48,7 @@ function saveStoredColumns(keys: string[]) {
     localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(keys));
 }
 
-export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
+export function TeamMemberBoard({ onDataChange, onTeamStatusClick }: TeamMemberBoardProps) {
     const [members, setMembers] = useState<TeamMember[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterProcess, setFilterProcess] = useState<string>('all');
@@ -132,7 +133,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
             render: (m) => <span className="text-gray-600 dark:text-gray-400 whitespace-nowrap">{m.workLocation}</span>,
         },
         {
-            key: 'birthYear', label: '출생년도', sortField: 'birthYear', defaultVisible: false,
+            key: 'birthYear', label: '출생연도', sortField: 'birthYear', defaultVisible: false,
             render: (m) => <span className="text-gray-600 dark:text-gray-400">{m.birthYear || '-'}</span>,
         },
         {
@@ -258,14 +259,14 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
         try {
             const text = await navigator.clipboard.readText();
             if (!text.trim()) {
-                setImportToast('❌ 클립보드가 비어있습니다.');
+                setImportToast('클립보드가 비어 있습니다.');
                 setTimeout(() => setImportToast(null), 3000);
                 return;
             }
 
             const parseResult = parseHRText(text);
             if (parseResult.members.length === 0) {
-                setImportToast('❌ 인사정보를 파싱할 수 없습니다. 형식을 확인해주세요.');
+                setImportToast('팀원 정보를 파싱할 수 없습니다. 텍스트 형식을 확인해 주세요.');
                 setTimeout(() => setImportToast(null), 3000);
                 return;
             }
@@ -280,7 +281,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
 
         } catch (err) {
             console.error('클립보드 읽기 실패:', err);
-            setImportToast('❌ 클립보드를 읽을 수 없습니다. 브라우저 권한을 확인해주세요.');
+            setImportToast('클립보드를 읽을 수 없습니다. 브라우저 권한을 확인해 주세요.');
             setTimeout(() => setImportToast(null), 3000);
         }
     }, [onDataChange]);
@@ -294,7 +295,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
         if (mode === 'overwrite') {
             // Delete All & Add New
             finalMembers = pendingImportMembers;
-            msg = `✅ 전체 덮어쓰기 완료: 총 ${finalMembers.length}명`;
+            msg = `전체 덮어쓰기 완료: 총 ${finalMembers.length}명`;
 
             // Overwrite custom columns: Replace with new headers
             const newHeaders = pendingImportStats?.customHeaders || [];
@@ -311,7 +312,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
             const existing = getTeamMembers();
             const { merged, added, updated, unchanged } = mergeTeamMembers(existing, pendingImportMembers);
             finalMembers = merged;
-            msg = `✅ 병합 완료: 총 ${merged.length}명 (추가: ${added}, 갱신: ${updated}, 유지: ${unchanged})`;
+            msg = `병합 완료: 총 ${merged.length}명 (추가: ${added}, 갱신: ${updated}, 유지: ${unchanged})`;
 
             // Merge custom columns: Add new headers if not exists
             const newHeaders = pendingImportStats?.customHeaders || [];
@@ -337,7 +338,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
         }
 
         if (pendingImportStats?.customHeaders.length) {
-            msg += `\n📋 추가 컬럼: ${pendingImportStats.customHeaders.join(', ')}`;
+            msg += `\n추가 컬럼: ${pendingImportStats.customHeaders.join(', ')}`;
         }
 
         saveTeamMembers(finalMembers);
@@ -438,6 +439,12 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
                         <span className="text-sm text-gray-500 dark:text-gray-400">
                             ({sortedMembers.length}/{members.length}명)
                         </span>
+                        <button
+                            onClick={() => onTeamStatusClick?.()}
+                            className="ml-2 px-2.5 py-1 text-xs rounded-lg border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:bg-blue-900/30 dark:hover:bg-blue-900/50"
+                        >
+                            팀원 현황
+                        </button>
                     </div>
                     <div className="flex items-center gap-3">
                         {/* Column Settings */}
@@ -503,7 +510,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                         <input
                             type="text"
-                            placeholder="이름, Knox ID, 소속, 공정, 근무지 검색..."
+                            placeholder="이름, Knox ID, 소속, 그룹, 근무지 검색..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
@@ -516,7 +523,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
                     </select>
                     <select value={filterProcess} onChange={e => setFilterProcess(e.target.value)}
                         className="text-xs border border-gray-300 rounded-lg px-2 py-2 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200">
-                        <option value="all">전체 공정</option>
+                        <option value="all">전체 그룹</option>
                         {uniqueProcesses.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
                     <select value={filterPosition} onChange={e => setFilterPosition(e.target.value)}
@@ -555,7 +562,7 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
                         {members.length === 0 ? (
                             <>
                                 <p className="text-lg font-medium">팀원 정보가 없습니다</p>
-                                <p className="text-sm mt-1">인트라넷에서 Ctrl+A → Ctrl+C 후</p>
+                                <p className="text-sm mt-1">인트라넷에서 Ctrl+A 후 Ctrl+C를 복사하세요</p>
                                 <p className="text-sm"><strong>Ctrl+Shift+V</strong>로 가져오세요</p>
                             </>
                         ) : (
@@ -650,8 +657,8 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
                                     className="w-full flex items-center justify-between p-4 rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-900/30 dark:bg-red-900/10 dark:hover:bg-red-900/20 transition-all group"
                                 >
                                     <div className="text-left">
-                                        <div className="font-bold text-red-700 dark:text-red-400 mb-0.5">덮어쓰기 (전체 삭제 후 추가)</div>
-                                        <div className="text-xs text-red-600/70 dark:text-red-400/70">기존 데이터를 모두 삭제하고 새로운 데이터로 교체합니다.</div>
+                                        <div className="font-bold text-red-700 dark:text-red-400 mb-0.5">덮어쓰기 (전체 교체)</div>
+                                        <div className="text-xs text-red-600/70 dark:text-red-400/70">기존 데이터를 모두 교체하고 새 데이터로 저장합니다.</div>
                                     </div>
                                     <Trash2 className="w-5 h-5 text-red-400 group-hover:text-red-600 dark:text-red-500/50 dark:group-hover:text-red-400" />
                                 </button>
@@ -661,8 +668,8 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
                                     className="w-full flex items-center justify-between p-4 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 dark:border-blue-900/30 dark:bg-blue-900/10 dark:hover:bg-blue-900/20 transition-all group"
                                 >
                                     <div className="text-left">
-                                        <div className="font-bold text-blue-700 dark:text-blue-400 mb-0.5">추가하기 (유지 및 병합)</div>
-                                        <div className="text-xs text-blue-600/70 dark:text-blue-400/70">기존 데이터를 유지하고 새로운 데이터를 추가/갱신합니다.</div>
+                                        <div className="font-bold text-blue-700 dark:text-blue-400 mb-0.5">병합하기 (유지 + 갱신)</div>
+                                        <div className="text-xs text-blue-600/70 dark:text-blue-400/70">기존 데이터를 유지하면서 새 데이터를 추가/갱신합니다.</div>
                                     </div>
                                     <Users className="w-5 h-5 text-blue-400 group-hover:text-blue-600 dark:text-blue-500/50 dark:group-hover:text-blue-400" />
                                 </button>
@@ -682,3 +689,6 @@ export function TeamMemberBoard({ onDataChange }: TeamMemberBoardProps) {
         </div>
     );
 }
+
+
+
