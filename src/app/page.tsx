@@ -71,7 +71,7 @@ export default function Home() {
   const [notesVersion, setNotesVersion] = useState(0);
   const [isTeamScheduleModalOpen, setIsTeamScheduleModalOpen] = useState(false);
   const [editingScheduleTask, setEditingScheduleTask] = useState<Task | null>(null);
-  const [collectionGroups, setCollectionGroups] = useState<string[]>(['CP', 'OLB', 'LASER', '?쇰?1', '?쇰?2']);
+  const [collectionGroups, setCollectionGroups] = useState<string[]>(['CP', 'OLB', 'LASER', '라미1', '라미2']);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [selectedMemberForModal, setSelectedMemberForModal] = useState<TeamMember | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +86,7 @@ export default function Home() {
 
   // Load tasks for selected categories (multiple)
   const loadTasks = useCallback(() => {
-    const teamScheduleCat = categories.find(c => c.name === '? ?쇱젙');
+    const teamScheduleCat = categories.find(c => c.name === '팀 일정');
     let targetIds = [...selectedCategoryIds];
 
     // Always include 'Team Schedule' for Calendar view visibility
@@ -112,14 +112,14 @@ export default function Home() {
       let cats = loadCategories();
 
       // Ensure 'Team Schedule' category exists
-      if (!cats.find(c => c.name === '? ?쇱젙')) {
-        addCategory('? ?쇱젙');
+      if (!cats.find(c => c.name === '팀 일정')) {
+        addCategory('팀 일정');
         cats = loadCategories();
       }
 
       if (cats.length > 0 && selectedCategoryIds.length === 0) {
         const defaultIds = [cats[0].id];
-        const teamSchedule = cats.find(c => c.name === '? ?쇱젙');
+        const teamSchedule = cats.find(c => c.name === '팀 일정');
         if (teamSchedule && teamSchedule.id !== cats[0].id) {
           defaultIds.push(teamSchedule.id);
         }
@@ -231,18 +231,18 @@ export default function Home() {
         // Read from clipboard and import
         navigator.clipboard.readText().then(clipboardText => {
           if (!clipboardText.trim()) {
-            alert('?대┰蹂대뱶媛 鍮꾩뼱?덉뒿?덈떎.');
+            alert('클립보드가 비어있습니다.');
             return;
           }
           const result = parseScheduleText(clipboardText, currentMonth.getFullYear(), currentMonth.getMonth());
           if (result.length === 0) {
-            alert('媛먯????쇱젙???놁뒿?덈떎. ?띿뒪???뺤떇???뺤씤?댁＜?몄슂.');
+            alert('감지된 일정이 없습니다. 텍스트 형식을 확인해주세요.');
             return;
           }
           handleScheduleImport(result);
         }).catch(err => {
-          console.error('?대┰蹂대뱶 ?쎄린 ?ㅽ뙣:', err);
-          alert('?대┰蹂대뱶瑜??쎌쓣 ???놁뒿?덈떎. 釉뚮씪?곗? 沅뚰븳???뺤씤?댁＜?몄슂.');
+          console.error('클립보드 읽기 실패:', err);
+          alert('클립보드를 읽을 수 없습니다. 브라우저 권한을 확인해주세요.');
         });
       }
     };
@@ -382,11 +382,11 @@ export default function Home() {
     // 2. First category that is NOT 'Team Schedule'
 
     let targetCategoryId = selectedCategoryIds[0];
-    const scheduleCategory = categories.find(c => c.name === '? ?쇱젙');
+    const scheduleCategory = categories.find(c => c.name === '팀 일정');
 
     // If current selection is Team Schedule (or empty), try to find a better one
     if (scheduleCategory && targetCategoryId === scheduleCategory.id) {
-      const defaultCategory = categories.find(c => c.name !== '? ?쇱젙');
+      const defaultCategory = categories.find(c => c.name !== '팀 일정');
       if (defaultCategory) {
         targetCategoryId = defaultCategory.id;
       }
@@ -479,9 +479,9 @@ export default function Home() {
 
   const handleScheduleImport = useCallback((schedules: ParsedSchedule[]) => {
     // 1. Find or create "Team Schedule" category
-    let scheduleCategory = categories.find(c => c.name === '? ?쇱젙');
+    let scheduleCategory = categories.find(c => c.name === '팀 일정');
     if (!scheduleCategory) {
-      scheduleCategory = addCategory('? ?쇱젙');
+      scheduleCategory = addCategory('팀 일정');
     }
 
     // 2. Clear existing tasks in the Team Schedule category (Smart Overwrite Strategy)
@@ -578,13 +578,13 @@ export default function Home() {
           const [dateStr, title] = key.split('|');
           // Build content (without title - title goes to note.title)
           let noteContent = '';
-          if (data.resourceUrl) noteContent += `?뵕 ?먮즺: ${data.resourceUrl}\n`;
-          if (data.tags && data.tags.length > 0) noteContent += `?뤇截??쒓렇: ${data.tags.join(', ')}\n`;
-          if (data.notes) noteContent += `?뱷 硫붾え:\n${data.notes}`;
+          if (data.resourceUrl) noteContent += `🔗 자료: ${data.resourceUrl}\n`;
+          if (data.tags && data.tags.length > 0) noteContent += `🏷️ 태그: ${data.tags.join(', ')}\n`;
+          if (data.notes) noteContent += `📝 메모:\n${data.notes}`;
 
           // Save to Keep and Pin it for easy access (Sidebar)
           // addNote(title, content, color) - use proper parameter order
-          const noteTitle = `[?먮룞諛깆뾽] ${dateStr} ${title}`;
+          const noteTitle = `[자동백업] ${dateStr} ${title}`;
           const newNote = addNote(noteTitle, noteContent, 'yellow');
           // We need to pin it so it shows up in the sidebar for easy Drag & Drop
           // Use synchronous update to ensure state is ready before setNotesVersion triggers re-render
@@ -610,9 +610,9 @@ export default function Home() {
     setTimeout(() => {
       if (orphanedCount > 0) {
         // Just notify user, don't switch view - pinned memos are visible in sidebar
-        window.alert(`珥?${schedules.length}媛쒖쓽 ?쇱젙???낅뜲?댄듃?섏뿀?듬땲??\n\n?좑툘 ${orphanedCount}媛쒖쓽 蹂寃쎈맂 ?쇱젙 ?곗씠?곌? ?ъ씠?쒕컮 [怨좎젙 硫붾え]???덉쟾?섍쾶 諛깆뾽?섏뿀?듬땲??\n\n?ъ씠?쒕컮?먯꽌 硫붾え瑜?罹섎┛???쇱젙 ?꾨줈 ?쒕옒洹명븯??蹂묓빀?????덉뒿?덈떎.`);
+        window.alert(`총 ${schedules.length}개의 일정이 업데이트되었습니다.\n\n⚠️ ${orphanedCount}개의 변경된 일정 데이터가 사이드바 [고정 메모]에 안전하게 백업되었습니다.\n\n사이드바에서 메모를 캘린더 일정 위로 드래그하여 병합할 수 있습니다.`);
       } else {
-        window.alert(`珥?${schedules.length}媛쒖쓽 ?쇱젙???깃났?곸쑝濡??낅뜲?댄듃?섏뿀?듬땲??`);
+        window.alert(`총 ${schedules.length}개의 일정이 성공적으로 업데이트되었습니다.`);
       }
     }, 100);
   }, [categories, selectedCategoryIds, loadCategories, loadTasks, setViewMode]);
@@ -653,7 +653,7 @@ export default function Home() {
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
-        <div className="text-gray-500">濡쒕뵫 以?..</div>
+        <div className="text-gray-500">로딩 중...</div>
       </div>
     );
   }
@@ -671,7 +671,7 @@ export default function Home() {
           ? (isSidebarVisible ? 'right-[252px]' : 'right-4')
           : (isSidebarVisible ? 'left-[252px]' : 'left-4')
           }`}
-        title={isSidebarVisible ? "?ъ씠?쒕컮 ?④린湲?(Ctrl+`)" : "?ъ씠?쒕컮 蹂댁씠湲?(Ctrl+`)"}
+        title={isSidebarVisible ? "사이드바 숨기기 (Ctrl+`)" : "사이드바 보이기 (Ctrl+`)"}
       >
         {isSidebarVisible ? (
           <PanelLeftClose className="w-5 h-5" />
@@ -739,7 +739,7 @@ export default function Home() {
               categories={categories}
               tasks={tasks.filter(t => {
                 const category = categories.find(c => c.id === t.categoryId);
-                return category?.name !== '? ?쇱젙';
+                return category?.name !== '팀 일정';
               })}
               onTasksChange={handleTasksChange}
               collectionGroups={collectionGroups}
@@ -822,7 +822,7 @@ export default function Home() {
                   setSelectedNoteId(noteId);
                 }}
                 onSearchClick={() => setIsSearchOpen(true)}
-                teamScheduleCategoryId={categories.find(c => c.name === '? ?쇱젙')?.id || ''}
+                teamScheduleCategoryId={categories.find(c => c.name === '팀 일정')?.id || ''}
               />
             ) : null}
           </div>
@@ -884,7 +884,7 @@ export default function Home() {
         }}
         onScheduleAdded={handleTasksChange}
         initialDate={new Date()} // Not used for edit
-        teamScheduleCategoryId={categories.find(c => c.name === '? ?쇱젙')?.id || ''}
+        teamScheduleCategoryId={categories.find(c => c.name === '팀 일정')?.id || ''}
         existingTask={editingScheduleTask}
       />
       <SearchCommandDialog

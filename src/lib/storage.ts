@@ -623,7 +623,7 @@ export function saveLayoutPreset(index: number, state: LayoutState, name?: strin
 
     const preset: LayoutPreset = {
         ...state,
-        name: name || `?꾨━??${index + 1}`,
+        name: name || `프리셋 ${index + 1}`,
         savedAt: new Date().toISOString(),
     };
 

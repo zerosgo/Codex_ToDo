@@ -4,7 +4,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { BusinessTrip, TeamMember, TripCategory } from '@/lib/types';
 import { getBusinessTrips, saveBusinessTrips, deleteBusinessTrip, getTeamMembers, addTripRecord, getTripRecords, deleteTripRecord, getNameResolutions } from '@/lib/storage';
 import { TripRecord } from '@/lib/types';
-import { parseTripText } from '@/lib/trip-parser';
+import { parseTripText, normalizeTripCategory } from '@/lib/trip-parser';
 import { TripRecordBoard } from './trip-record-board';
 import { parseTripRecordText } from '@/lib/trip-record-parser';
 import { TripNameResolverDialog } from './trip-name-resolver-dialog';
@@ -170,7 +170,10 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
     const [showDestinationPicker, setShowDestinationPicker] = useState(false);
 
     useEffect(() => {
-        setTrips(getBusinessTrips());
+        setTrips(getBusinessTrips().map(t => ({
+            ...t,
+            category: normalizeTripCategory(t.purpose, t.category),
+        })));
         setMembers(getTeamMembers());
         setTripRecords(getTripRecords());
         setNameResolutions(getNameResolutions());
@@ -591,8 +594,12 @@ export function TripBoard({ onDataChange }: TripBoardProps) {
             // Manual records are separate DB.
             // So: saveBusinessTrips(parsedTrips) directly.
 
-            saveBusinessTrips(parsedTrips);
-            setTrips(parsedTrips);
+            const normalizedTrips = parsedTrips.map(t => ({
+                ...t,
+                category: normalizeTripCategory(t.purpose, t.category),
+            }));
+            saveBusinessTrips(normalizedTrips);
+            setTrips(normalizedTrips);
 
             // Update members if needed (usually treated as separate master, but here we just read)
             // We don't overwrite members here.

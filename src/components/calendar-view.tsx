@@ -867,7 +867,7 @@ export function CalendarView({
 
                                                 return (
                                                     <>
-                                                        {(isWeekPast ? scheduleTasks.slice(0, 3) : scheduleTasks).map((task) => {
+                                                        {scheduleTasks.map((task) => {
                                                             // Border Logic:
                                                             // - All Schedules: 3px left border
                                                             // - Active: Yellow
@@ -1056,7 +1056,7 @@ export function CalendarView({
                                                                 </div>
                                                             );
                                                         })}
-                                                        {isWeekPast && scheduleTasks.length > 3 && (
+                                                        {false && isWeekPast && scheduleTasks.length > 3 && (
                                                             <div className="text-[10px] text-gray-400 dark:text-gray-500 px-1 cursor-help" title={`${scheduleTasks.length - 3}개의 일정이 더 있습니다`}>
                                                                 + 팀 일정 {scheduleTasks.length - 3}개 더
                                                             </div>
@@ -1069,7 +1069,7 @@ export function CalendarView({
 
                                                         {/* 2. Regular Tasks (Box Style) */}
                                                         {/* Past weeks: limit to 3, Current/Future weeks: show all */}
-                                                        {(isWeekPast ? regularTasks.slice(0, 3) : regularTasks).map((task) => {
+                                                        {regularTasks.map((task) => {
                                                             // Completed Task Visibility
                                                             if (task.completed && settings.completedMode === 'hidden') return null;
 
@@ -1218,7 +1218,7 @@ export function CalendarView({
                                                             );
                                                         })}
 
-                                                        {isWeekPast && regularTasks.length > 3 && (
+                                                        {false && isWeekPast && regularTasks.length > 3 && (
                                                             <div className="text-[10px] text-gray-400 dark:text-gray-500 px-1">
                                                                 +{regularTasks.length - 3}개 더
                                                             </div>
@@ -1394,19 +1394,13 @@ export function CalendarView({
                         return match?.destination || bt.location || '미지정';
                     };
 
-                    const ALLOWED_DEPTS = ['실장기술', '라미기술'];
-
-                    // Build enriched trip data with destination AND filter by department if trip modal
+                    // Build enriched trip data with destination (all departments included)
                     type EnrichedTrip = BusinessTrip & { destination: string; member?: TeamMember };
                     const enrichedTrips: EnrichedTrip[] = activeTrips.map(t => ({
                         ...t,
                         destination: isTripModal ? resolveDestForTrip(t) : '',
                         member: members.find(m => m.knoxId === t.knoxId || m.name === t.name),
-                    })).filter(t => {
-                        if (!isTripModal) return true;
-                        const dept = t.member?.department || '미지정';
-                        return ALLOWED_DEPTS.includes(dept);
-                    });
+                    }));
 
                     // Collect unique destinations in fixed order
                     const DEST_ORDER = ['SDV', 'SDD', 'SDT', 'SDN'];
@@ -1418,7 +1412,19 @@ export function CalendarView({
                     // === Build matrix: department > group > part × destination ===
                     type RowKey = { department: string; group: string; part: string };
                     const matrixRows: { key: RowKey; counts: Record<string, number>; total: number }[] = [];
-                    const departmentOrder = ['실장기술', '라미기술'];
+                    const preferredDeptOrder = ['실장기술', '라미기술'];
+                    const departmentOrder = Array.from(
+                        new Set(enrichedTrips.map(t => t.member?.department || '미지정'))
+                    ).sort((a, b) => {
+                        const ai = preferredDeptOrder.indexOf(a);
+                        const bi = preferredDeptOrder.indexOf(b);
+                        if (ai !== -1 || bi !== -1) {
+                            if (ai === -1) return 1;
+                            if (bi === -1) return -1;
+                            return ai - bi;
+                        }
+                        return a.localeCompare(b);
+                    });
 
                     if (isTripModal) {
                         // Group enriched trips by unique (dept, group, part) — only allowed departments

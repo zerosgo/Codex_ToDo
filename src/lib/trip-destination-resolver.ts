@@ -148,8 +148,8 @@ export function buildDisplayLabel(
     // 1. 출장지 매칭이 있으면 출장지 + DB 날짜 표시
     if (match && match.destination) {
         const dest = match.destination;
-        const start = formatShortDate(match.startDate);
-        const end = formatShortDate(match.endDate);
+        const start = formatShortDate(tripStartDate || match.startDate);
+        const end = formatShortDate(tripEndDate || match.endDate);
 
         // 괄호가 있는 패턴: "해외출장(생산법인)" → "해외출장(SDV : 1/12 ~ 2/3)"
         const parenMatch = purpose.match(/^(.+?)\(.*?\)$/);

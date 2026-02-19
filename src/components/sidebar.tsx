@@ -469,14 +469,14 @@ export function Sidebar({
                                             <span
                                                 className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1"
                                             >
-                                                {note.title || '?쒕ぉ ?놁쓬'}
+                                                {note.title || '제목 없음'}
                                             </span>
                                             <button
                                                 className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 transition-all rounded z-10"
                                                 onClick={(e) => {
                                                     e.preventDefault();
                                                     e.stopPropagation();
-                                                    if (window.confirm('??硫붾え瑜???젣?섏떆寃좎뒿?덇퉴?')) {
+                                                    if (window.confirm('이 메모를 삭제하시겠습니까?')) {
                                                         deleteNote(note.id);
                                                         loadPinnedNotes();
                                                     }
@@ -644,14 +644,14 @@ export function Sidebar({
                     >
                         가져오기
                     </Button>
-                    {/* ??쒕낫??踰꾪듉 - ?꾩슂???ㅼ떆 ?쒖꽦??
+                    {/* 대시보드 버튼 - 필요시 다시 활성화
                     <Button
                         variant="outline"
                         size="sm"
                         className="text-xs w-full mt-2 border-indigo-200 hover:bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:hover:bg-indigo-900/30 dark:text-indigo-400"
                         onClick={onDashboardClick}
                     >
-                        ?뱤 ??쒕낫??
+                        📊 대시보드
                     </Button>
                     */}
                 </div>

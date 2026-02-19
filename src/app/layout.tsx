@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Local Tasks - 로컬 할 일 관리",
-  description: "외부 서버 없이 브라우저에서 동작하는 로컬 할 일 관리 앱",
+  description: "서버나 외부 서비스 없이 브라우저에서 동작하는 로컬 할 일 관리 앱",
 };
 
 export default function RootLayout({
@@ -24,9 +24,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
       </body>
     </html>
