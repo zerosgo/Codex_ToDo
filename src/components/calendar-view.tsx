@@ -31,6 +31,7 @@ import { TeamScheduleAddModal } from './team-schedule-add-modal';
 import { TeamScheduleSearchModal } from './team-schedule-search-modal';
 import { CalendarSettingsModal, CalendarSettings, DEFAULT_SETTINGS } from './calendar-settings-modal';
 import { getHoliday } from '../lib/holidays';
+import { resolveTeamScheduleCategoryId } from '@/lib/team-schedule';
 import { Settings } from 'lucide-react';
 import { TeamMemberStatusTable } from './team-member-status-table';
 
@@ -155,8 +156,7 @@ export function CalendarView({
         }
     };
 
-    // Get Team Schedule Category ID
-    const teamScheduleCategoryId = categories.find(c => c.name === '팀 일정')?.id || '';
+    const teamScheduleCategoryId = resolveTeamScheduleCategoryId(categories, tasks);
 
     // Calendar Settings
     const [settings, setSettings] = useState<CalendarSettings>(DEFAULT_SETTINGS);
@@ -234,9 +234,8 @@ export function CalendarView({
         const now = new Date();
 
         // Find all "Team Schedule" tasks for today
-        const scheduleCategory = categories.find(c => c.name === '팀 일정');
         const todaysSchedules = tasks.filter(t =>
-            t.categoryId === scheduleCategory?.id &&
+            t.categoryId === teamScheduleCategoryId &&
             t.dueDate &&
             isSameDay(new Date(t.dueDate), now) &&
             t.dueTime // Must have time
@@ -295,7 +294,7 @@ export function CalendarView({
         }, nextUpdateDelay);
 
         return () => clearTimeout(timeoutId);
-    }, [tasks, categories, currentTime]); // Re-calc when tasks change or after time update
+    }, [tasks, teamScheduleCategoryId, currentTime]); // Re-calc when tasks change or after time update
 
     const getTasksForDate = (date: Date) => {
         return tasks.filter(task => {
@@ -740,20 +739,18 @@ export function CalendarView({
                                 const dayTasks = getTasksForDate(day);
 
                                 // Split tasks into Schedule and Regular
-                                const scheduleCategory = categories.find(c => c.name === '팀 일정');
-
                                 // Show all tasks if week is not collapsed
                                 // Apply executive filter if enabled
                                 const scheduleTasks = !isCollapsed
                                     ? dayTasks
-                                        .filter(t => t.categoryId === scheduleCategory?.id)
+                                        .filter(t => t.categoryId === teamScheduleCategoryId)
                                         .filter(t => showOnlyExecutive ? (t.highlightLevel && t.highlightLevel > 0) : true)
                                         .sort((a, b) => (a.dueTime || '99:99').localeCompare(b.dueTime || '99:99'))
                                     : [];
 
                                 const regularTasks = (showOnlyTeamSchedule || showOnlyExecutive || isCollapsed)
                                     ? []
-                                    : dayTasks.filter(t => t.categoryId !== scheduleCategory?.id);
+                                    : dayTasks.filter(t => t.categoryId !== teamScheduleCategoryId);
 
                                 // Regular tasks display logic
 

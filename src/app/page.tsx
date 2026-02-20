@@ -21,6 +21,7 @@ import { DashboardView } from '@/components/dashboard-view';
 import { TeamMemberStatusView } from '@/components/team-member-status-view';
 
 import { ParsedSchedule, parseScheduleText } from '@/lib/schedule-parser';
+import { TEAM_SCHEDULE_CATEGORY_NAME, resolveTeamScheduleCategoryId, isTeamScheduleTask } from '@/lib/team-schedule';
 import { Button } from '@/components/ui/button';
 import { PanelLeftClose, PanelLeft, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -76,6 +77,7 @@ export default function Home() {
   const [selectedMemberForModal, setSelectedMemberForModal] = useState<TeamMember | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewModeRef = useRef(viewMode);
+  const teamScheduleCategoryId = resolveTeamScheduleCategoryId(categories, getTasks());
 
   // Load categories from LocalStorage
   const loadCategories = useCallback(() => {
@@ -86,12 +88,12 @@ export default function Home() {
 
   // Load tasks for selected categories (multiple)
   const loadTasks = useCallback(() => {
-    const teamScheduleCat = categories.find(c => c.name === '팀 일정');
-    let targetIds = [...selectedCategoryIds];
+    const teamScheduleCatId = resolveTeamScheduleCategoryId(categories, getTasks());
+    const targetIds = [...selectedCategoryIds];
 
     // Always include 'Team Schedule' for Calendar view visibility
-    if (teamScheduleCat && !targetIds.includes(teamScheduleCat.id)) {
-      targetIds.push(teamScheduleCat.id);
+    if (teamScheduleCatId && !targetIds.includes(teamScheduleCatId)) {
+      targetIds.push(teamScheduleCatId);
     }
 
     if (targetIds.length > 0) {
@@ -112,16 +114,16 @@ export default function Home() {
       let cats = loadCategories();
 
       // Ensure 'Team Schedule' category exists
-      if (!cats.find(c => c.name === '팀 일정')) {
-        addCategory('팀 일정');
+      if (!resolveTeamScheduleCategoryId(cats, getTasks())) {
+        addCategory(TEAM_SCHEDULE_CATEGORY_NAME);
         cats = loadCategories();
       }
 
       if (cats.length > 0 && selectedCategoryIds.length === 0) {
         const defaultIds = [cats[0].id];
-        const teamSchedule = cats.find(c => c.name === '팀 일정');
-        if (teamSchedule && teamSchedule.id !== cats[0].id) {
-          defaultIds.push(teamSchedule.id);
+        const detectedTeamCategoryId = resolveTeamScheduleCategoryId(cats, getTasks());
+        if (detectedTeamCategoryId && detectedTeamCategoryId !== cats[0].id) {
+          defaultIds.push(detectedTeamCategoryId);
         }
         setSelectedCategoryIds(defaultIds);
       }
@@ -382,11 +384,11 @@ export default function Home() {
     // 2. First category that is NOT 'Team Schedule'
 
     let targetCategoryId = selectedCategoryIds[0];
-    const scheduleCategory = categories.find(c => c.name === '팀 일정');
+    const scheduleCategoryId = resolveTeamScheduleCategoryId(categories, getTasks());
 
     // If current selection is Team Schedule (or empty), try to find a better one
-    if (scheduleCategory && targetCategoryId === scheduleCategory.id) {
-      const defaultCategory = categories.find(c => c.name !== '팀 일정');
+    if (scheduleCategoryId && targetCategoryId === scheduleCategoryId) {
+      const defaultCategory = categories.find(c => c.id !== scheduleCategoryId);
       if (defaultCategory) {
         targetCategoryId = defaultCategory.id;
       }
@@ -479,9 +481,12 @@ export default function Home() {
 
   const handleScheduleImport = useCallback((schedules: ParsedSchedule[]) => {
     // 1. Find or create "Team Schedule" category
-    let scheduleCategory = categories.find(c => c.name === '팀 일정');
+    const existingScheduleCategoryId = resolveTeamScheduleCategoryId(categories, getTasks());
+    let scheduleCategory = existingScheduleCategoryId
+      ? categories.find(c => c.id === existingScheduleCategoryId)
+      : undefined;
     if (!scheduleCategory) {
-      scheduleCategory = addCategory('팀 일정');
+      scheduleCategory = addCategory(TEAM_SCHEDULE_CATEGORY_NAME);
     }
 
     // 2. Clear existing tasks in the Team Schedule category (Smart Overwrite Strategy)
@@ -739,7 +744,8 @@ export default function Home() {
               categories={categories}
               tasks={tasks.filter(t => {
                 const category = categories.find(c => c.id === t.categoryId);
-                return category?.name !== '팀 일정';
+                if (isTeamScheduleTask(t, teamScheduleCategoryId)) return false;
+                return category?.name !== TEAM_SCHEDULE_CATEGORY_NAME;
               })}
               onTasksChange={handleTasksChange}
               collectionGroups={collectionGroups}
@@ -822,7 +828,7 @@ export default function Home() {
                   setSelectedNoteId(noteId);
                 }}
                 onSearchClick={() => setIsSearchOpen(true)}
-                teamScheduleCategoryId={categories.find(c => c.name === '팀 일정')?.id || ''}
+                teamScheduleCategoryId={teamScheduleCategoryId}
               />
             ) : null}
           </div>
@@ -884,7 +890,7 @@ export default function Home() {
         }}
         onScheduleAdded={handleTasksChange}
         initialDate={new Date()} // Not used for edit
-        teamScheduleCategoryId={categories.find(c => c.name === '팀 일정')?.id || ''}
+        teamScheduleCategoryId={teamScheduleCategoryId}
         existingTask={editingScheduleTask}
       />
       <SearchCommandDialog
